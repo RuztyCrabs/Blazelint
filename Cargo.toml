@@ -1,0 +1,10 @@
+[package]
+name = "blazelint"
+version = "0.1.0"
+edition = "2021"
+authors = ["Chamal1120"]
+description = "A simple linter for Ballerina programming language"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.7"
