@@ -1,5 +1,7 @@
 mod lexer;
 mod linter;
+mod parser;
+mod ast; 
 mod config;
 
 use std::fs;

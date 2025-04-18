@@ -1,5 +1,7 @@
 use crate::lexer::{Token, TokenType};
 use crate::config::LinterConfig;
+use crate::parser::Parser;
+use crate::ast::Expr;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -36,6 +38,13 @@ impl std::fmt::Display for Diagnostic {
 pub trait Rule {
     fn check(&self, tokens: &[Token]) -> Vec<Diagnostic>;
     #[allow(dead_code)]
+    fn name(&self) -> &'static str;
+}
+
+
+// AST-based Rule
+pub trait AstRule {
+    fn check(&self, ast: &Expr) -> Vec<Diagnostic>;
     fn name(&self) -> &'static str;
 }
 
@@ -157,17 +166,41 @@ impl Rule for ImportStatementRule {
     }
 }
 
+
+// AST Rule Example
+pub struct DummyAstRule;
+
+impl AstRule for DummyAstRule {
+    fn check(&self, ast: &Expr) -> Vec<Diagnostic> {
+        // Example rule: just print that AST was analyzed
+        println!("Running dummy AST rule on: {:?}", ast);
+        vec![]
+    }
+
+    fn name(&self) -> &'static str {
+        "dummy-ast-rule"
+    }
+}
+
 pub struct Linter {
     rules: Vec<Box<dyn Rule>>,
+    ast_rules: Vec<Box<dyn AstRule>>, 
 }
 
 impl Linter {
     pub fn new() -> Self {
-        Linter { rules: Vec::new() }
+        Linter { 
+            rules: Vec::new(), 
+            ast_rules: Vec::new(),
+        }
     }
     
     pub fn add_rule(&mut self, rule: Box<dyn Rule>) {
         self.rules.push(rule);
+    }
+
+    pub fn add_ast_rule(&mut self, rule: Box<dyn AstRule>) {
+        self.ast_rules.push(rule);
     }
     
     pub fn lint(&self, tokens: &[Token]) -> Vec<Diagnostic> {
@@ -177,6 +210,16 @@ impl Linter {
             let rule_diagnostics = rule.check(tokens);
             diagnostics.extend(rule_diagnostics);
         }
+
+         // Parse the AST once for all AST-based rules
+         let mut parser = Parser::new(tokens.to_vec());
+         if let Some(ast) = parser.parse_expression() {
+             for ast_rule in &self.ast_rules {
+                 diagnostics.extend(ast_rule.check(&ast));
+             }
+         } else {
+             eprintln!("Failed to generate AST.");
+         }
         
         diagnostics
     }
@@ -196,6 +239,10 @@ pub fn lint_tokens(tokens: &[Token], config: &LinterConfig) -> Vec<Diagnostic> {
     
     if config.is_rule_enabled("import-statement") {
         linter.add_rule(Box::new(ImportStatementRule));
+    }
+
+    if config.is_rule_enabled("dummy-ast-rule") {
+        linter.add_ast_rule(Box::new(DummyAstRule)); 
     }
     
     linter.lint(tokens)
