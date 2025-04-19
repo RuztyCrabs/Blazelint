@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant User
+    participant main
+    participant config
+    participant lexer
+    participant linter
+
+    User->>main: Provide file + optional config
+    main->>config: Load config or use default
+    main->>lexer: tokenize(code, keywords)
+    lexer-->>main: tokens
+    main->>linter: lint_tokens(tokens, config)
+    linter->>Linter: new + add_rule
+    Linter->>Rule: check(tokens)
+    Rule-->>Linter: diagnostics
+    Linter-->>linter: all diagnostics
+    linter-->>main: diagnostics
+    main->>User: Print diagnostics

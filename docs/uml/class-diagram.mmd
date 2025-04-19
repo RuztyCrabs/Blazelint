@@ -1,0 +1,52 @@
+classDiagram
+    class Token {
+        TokenType token_type
+        String value
+        usize line
+        usize column
+    }
+
+    class TokenType {
+        <<enum>>
+        Keyword
+        Identifier
+        Symbol
+        StringLiteral
+        Whitespace
+        Comment
+        Unknown
+    }
+
+    class Diagnostic {
+        String message
+        Severity severity
+        usize line
+        usize column
+    }
+
+    class Severity {
+        <<enum>>
+        Error
+        Warning
+        Info
+    }
+
+    class Rule {
+        <<trait>>
+        check(tokens: &[Token]) -> Vec<Diagnostic>
+        name() -> &'static str
+    }
+
+    class Linter {
+        rules: Vec<Box<dyn Rule>>
+        lint(tokens: &[Token]) -> Vec<Diagnostic>
+    }
+
+    class UnknownTokenRule
+    class FunctionDeclarationRule
+    class ImportStatementRule
+
+    Rule <|.. UnknownTokenRule
+    Rule <|.. FunctionDeclarationRule
+    Rule <|.. ImportStatementRule
+    Linter --> Rule

@@ -1,0 +1,31 @@
+flowchart TD
+    Start([Start]) --> Args[Parse CLI arguments]
+    Args --> CheckArgs{File path provided?}
+    
+    CheckArgs -- No --> UsageMsg[Print usage message and exit]
+    CheckArgs -- Yes --> ConfigCheck{--config provided?}
+    
+    ConfigCheck -- Yes --> LoadConfig[Load config file]
+    LoadConfig -->|Success| UseCustomConfig[Use custom config]
+    LoadConfig -->|Fail| UseDefaultConfig1[Print error\nUse default config]
+    
+    ConfigCheck -- No --> UseDefaultConfig2[Use default config]
+    
+    UseCustomConfig --> ReadFile[Read source file]
+    UseDefaultConfig1 --> ReadFile
+    UseDefaultConfig2 --> ReadFile
+    
+    ReadFile -->|Success| RunLinter[run_linter_on_code]
+    ReadFile -->|Fail| ReadErr[Print file read error and exit]
+    
+    RunLinter --> Tokenize[tokenize source code]
+    Tokenize --> ShowTokens[Print tokens]
+    ShowTokens --> LintTokens[lint_tokens with rules]
+    LintTokens --> ApplyRules[Apply enabled rules]
+    ApplyRules --> DiagCheck{Diagnostics found?}
+    
+    DiagCheck -- No --> PrintNoIssues[Print no issues found]
+    DiagCheck -- Yes --> PrintIssues[Print all diagnostics]
+    
+    PrintNoIssues --> End([End])
+    PrintIssues --> End
