@@ -1,6 +1,6 @@
 /target
-ballerina-linter.toml
-hello.bal
+/test-codes
+sample-config/ballerina-linter.toml
 implementation.md
 
 
