@@ -41,32 +41,40 @@ The linter tokenizes Ballerina code and applies a set of linting rules to detect
 
 ## 2. Functional Requirements
 
-### 2.1 Lexical Analysis (Preprocessing)
-- Tokenizes source code as a preliminary step, if needed for the parser.
-- May be maintained for debugging or token-level fallback rules.
+### 2.1 Lexical Analyzer
+The lexer is responsible for converting raw source code into a structured sequence of tokens.
 
-### 2.2 Parsing & AST Construction
-- Parses the tokenized source code to construct an **Abstract Syntax Tree (AST)**.
-- Provides a hierarchical structure that represents the code, capturing nested scopes and syntax elements.
+- **Input**: Source code as a string  
+- **Output**: `Vec<Token>` – a flat list of tokens  
+- **Token Types**:
+  - Identifier – variable or function names
+  - Keyword – language keywords like `let`, `fn`, etc.
+  - Symbol – operators and punctuation (`=`, `{`, `;`, etc.)
+  - Literal – numbers, strings, etc.
+  - Comment and Whitespace – optional, depending on usage
 
-### 2.3 Rule Engine
-- Applies linting rules directly to the **AST** nodes rather than on a flat token stream.
-- Enables context-aware analysis such as detecting misplaced imports or function declaration issues.
+### 2.2 Rule Checker
+Checks the sequence of tokens (or AST nodes if using a parser) for issues by applying a set of predefined rules.
 
-### 2.4 Diagnostics Reporting
-- Outputs warnings and errors in a human-readable format or as structured data (e.g., JSON).
-- Includes relevant information like error messages, and line and column numbers from the AST.
+- **Input**: Slice of tokens (`&[Token]`)  
+- **Output**: List of lint warnings or errors  
+- **Process**:
+  - Applies each rule implementing the `Rule` trait
+  - Detects specific violations or patterns
 
-### 2.5 Configuration System
-- Loads rule configurations from a config file or defaults if none is provided.
-- Allows enabling/disabling of specific AST-based rules.
+### 2.3 Diagnostics Engine
+Collects and formats all reported diagnostics:
 
-### 2.6 CLI Interface
-- Parses command-line arguments and flags:
-  - `--help`
-  - `--version`
-  - `--config`
-  - `--verbose`
+- Message describing the issue  
+- Severity level (warning or error)  
+- Location (line and column)  
+- Triggering rule name  
+
+### 2.4 Configurable Rule Set
+Supports custom linting configurations.
+
+- Enable/disable rules using a config file (e.g., TOML, JSON)  
+- CLI arguments can override config settings
 
 ---
 
@@ -152,4 +160,3 @@ unknown-token = true
 function-declaration = true
 import-statement = true
 ```
-
