@@ -1,29 +1,30 @@
-mod lexer;
-mod token;
-mod parser;
 mod ast;
-mod linter;
 mod error;
+mod lexer;
+mod linter;
+mod parser;
+mod token;
 
-use token::{Token, TokenType};
 use lexer::Lexer;
+use token::{Token, TokenType};
 
 fn main() {
-    println!("Welcome to BlazeLint! ");
+  println!("Welcome to BlazeLint! ");
 
-    let source = "() { } , . - + * ;".to_string();
-    let mut lexer = Lexer::new(source);
-    let tokens = lexer.scan_tokens();
+  // hard codeded a dummy bal syntax for testing the lexer
+  let source = "() { } , . - + * ; == != >= <= 123 1.23 12.".to_string();
+  let mut lexer = Lexer::new(source);
+  let tokens = lexer.scan_tokens();
 
-    for token in tokens {
-        println!("{:?}", token);
-    }
+  for token in tokens {
+    println!("{:?}", token);
+  }
 
-//    let example_token = Token {
-//        token_type: TokenType::Var,
-//        lexeme: "Var".to_string(),
-//        line: 1,
-//    };
-//
-//    println!("{:?}", example_token);
+  //    let example_token = Token {
+  //        token_type: TokenType::Var,
+  //        lexeme: "Var".to_string(),
+  //        line: 1,
+  //    };
+  //
+  //    println!("{:?}", example_token);
 }
