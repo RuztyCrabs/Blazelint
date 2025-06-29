@@ -1,48 +1,16 @@
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
   /// Keywords
-  Var,
-  Function,
-  If,
-  Else,
-  While,
-  Foreach,
-  In,
-  Return,
-  Panic,
-  Check,
-  Returns, // For function return types
-  Int,
-  String,
-  Boolean,
-  Float,
-  True,
-  False,
+  Var, Function, If, Else, While, Foreach,
+  In, Return, Panic, Check, Returns,
+  Int, String, Boolean, Float, True, False,
 
   // Operators
-  Plus,
-  Minus,
-  Star,
-  Slash,
-  Bang,
-  Eq,
-  EqEq,
-  BangEq,
-  Gt,
-  Ge,
-  Lt,
-  Le,
-  AmpAmp,
-  PipePipe,
+  Plus, Minus, Star, Slash, Bang, Eq, 
+  EqEq, BangEq, Gt, Ge, Lt, Le, AmpAmp, PipePipe,
 
   // Delimiters
-  LParen,
-  RParen,
-  LBrace,
-  RBrace,
-  Colon,
-  Semicolon,
-  Comma,
+  LParen, RParen, LBrace, RBrace, Colon, Semicolon, Comma,
 
   // Literals
   Number(f64),
@@ -65,46 +33,6 @@ impl<'input> Lexer<'input> {
       start: 0,
       current: 0,
     }
-  }
-
-  /// Advances the `current` pointer and consumes the next char
-  fn advance(&mut self) -> Option<char> {
-    let c = self.chars.next();
-    if let Some(ch) = c {
-      self.current += ch.len_utf8();
-    }
-    c
-  }
-
-  /// Peeks at the next char without consuming it
-  fn peek(&mut self) -> Option<&char> {
-    self.chars.peek()
-  }
-
-  /// Peeks at the char two positons ahead without consuming it
-  fn peek_next(&mut self) -> Option<char> {
-    let mut temp_chars = self.chars.clone();
-    temp_chars.next(); // Consume the first char
-    temp_chars.next() // Peek at the second
-  }
-
-  /// Checks if the next char matches `expected` and  consumes it if so
-  fn match_char(&mut self, expected: char) -> bool {
-    if let Some(&c) = self.peek() {
-      if c == expected {
-        self.advance();
-        true
-      } else {
-        false
-      }
-    } else {
-      false
-    }
-  }
-
-  /// Checks if the current cursor is a tthe end of the input
-  fn is_at_end(&mut self) -> bool {
-    self.peek().is_none()
   }
 
   /// Create a token from the `start` to `current` position
@@ -256,6 +184,48 @@ impl<'input> Lexer<'input> {
       "false" => Token::False,
       _ => Token::Identifier(text.to_string()),
     }
+  }
+
+  //-------------- Helpers ---------------------------
+
+  /// Advances the `current` pointer and consumes the next char
+  fn advance(&mut self) -> Option<char> {
+    let c = self.chars.next();
+    if let Some(ch) = c {
+      self.current += ch.len_utf8();
+    }
+    c
+  }
+
+  /// Peeks at the next char without consuming it
+  fn peek(&mut self) -> Option<&char> {
+    self.chars.peek()
+  }
+
+  /// Peeks at the char two positons ahead without consuming it
+  fn peek_next(&mut self) -> Option<char> {
+    let mut temp_chars = self.chars.clone();
+    temp_chars.next(); // Consume the first char
+    temp_chars.next() // Peek at the second
+  }
+
+  /// Checks if the next char matches `expected` and  consumes it if so
+  fn match_char(&mut self, expected: char) -> bool {
+    if let Some(&c) = self.peek() {
+      if c == expected {
+        self.advance();
+        true
+      } else {
+        false
+      }
+    } else {
+      false
+    }
+  }
+
+  /// Checks if the current cursor is a tthe end of the input
+  fn is_at_end(&mut self) -> bool {
+    self.peek().is_none()
   }
 }
 
