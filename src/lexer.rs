@@ -1,195 +1,353 @@
-use crate::token::{Token, TokenType};
+#[derive(Debug, PartialEq, Clone)]
+pub enum Token {
+  // Keywords
+  Var,
+  Function,
+  If,
+  Else,
+  While,
+  Foreach,
+  In,
+  Return,
+  Panic,
+  Check,
+  Returns, // For function return types
+  Int,
+  String,
+  Boolean,
+  Float,
+  True,
+  False,
 
-pub struct Lexer {
-  source: String,
-  chars: Vec<char>,
-  start: usize,
-  current: usize,
-  line: usize,
+  // Operators
+  Plus,
+  Minus,
+  Star,
+  Slash,
+  Bang,
+  Eq,
+  EqEq,
+  BangEq,
+  Gt,
+  Ge,
+  Lt,
+  Le,
+  AmpAmp,
+  PipePipe,
+
+  // Delimiters
+  LParen,
+  RParen,
+  LBrace,
+  RBrace,
+  Colon,
+  Semicolon,
+  Comma,
+
+  // Literals
+  Number(f64),
+  StringLiteral(String),
+  Identifier(String),
 }
 
-impl Lexer {
-  pub fn new(source: String) -> Self {
-    let chars: Vec<char> = source.chars().collect();
-    Self {
-      source,
-      chars,
+pub struct Lexer<'input> {
+  input: &'input str,
+  chars: std::iter::Peekable<std::str::Chars<'input>>,
+  start: usize,   // Start offset of the current lexeme
+  current: usize, // Current char being considered
+}
+
+impl<'input> Lexer<'input> {
+  pub fn new(input: &'input str) -> Self {
+    Lexer {
+      input,
+      chars: input.chars().peekable(),
       start: 0,
       current: 0,
-      line: 0,
     }
   }
 
-  pub fn scan_tokens(&mut self) -> Vec<Token> {
-    let mut tokens = Vec::new();
-
-    while !self.is_at_end() {
-      self.start = self.current;
-      if let Some(token) = self.scan_token() {
-        tokens.push(token);
-      }
+  /// Advances the `current` pointer and consumes the next char
+  fn advance(&mut self) -> Option<char> {
+    let c = self.chars.next();
+    if let Some(ch) = c {
+      self.current += ch.len_utf8();
     }
-
-    tokens.push(Token {
-      token_type: TokenType::Eof,
-      lexeme: "".to_string(),
-      line: self.line,
-    });
-
-    tokens
+    c
   }
 
-  /// Scans and returns the next valid token, or `None` to skip whitespace/comments.
-  /// This is the main driver function for lexing.
-  fn scan_token(&mut self) -> Option<Token> {
-    let ch = self.advance();
-
-    match ch {
-      /// Create single char tokens
-      '(' => Some(self.make_token(TokenType::LeftParen)),
-      ')' => Some(self.make_token(TokenType::RightParen)),
-      '{' => Some(self.make_token(TokenType::LeftBrace)),
-      '}' => Some(self.make_token(TokenType::RightBrace)),
-      ',' => Some(self.make_token(TokenType::Comma)),
-      '.' => Some(self.make_token(TokenType::Dot)),
-      '-' => Some(self.make_token(TokenType::Minus)),
-      '+' => Some(self.make_token(TokenType::Plus)),
-      ';' => Some(self.make_token(TokenType::SemiColon)),
-      '*' => Some(self.make_token(TokenType::Star)),
-
-      /// Create double char tokens
-      '=' => {
-        if self.match_char('=') {
-          Some(self.make_token(TokenType::EqualEqual))
-        } else {
-          Some(self.make_token(TokenType::Equal))
-        }
-      }
-
-      '!' => {
-        if self.match_char('=') {
-          Some(self.make_token(TokenType::BangEqual))
-        } else {
-          Some(self.make_token(TokenType::Bang))
-        }
-      }
-
-      '<' => {
-        if self.match_char('=') {
-          Some(self.make_token(TokenType::LessEqual))
-        } else {
-          Some(self.make_token(TokenType::Less))
-        }
-      }
-
-      '>' => {
-        if self.match_char('=') {
-          Some(self.make_token(TokenType::GreaterEqual))
-        } else {
-          Some(self.make_token(TokenType::Greater))
-        }
-      }
-
-      // Create number tokens
-      '0'..='9' => self.number(),
-
-      // Ignore spaces, carriage returns, tabs and newlines
-      ' ' | '\r' | '\t' => None,
-      '\n' => {
-        self.line += 1;
-        None
-      }
-
-      _ => {
-        // Later: handle indentifiers, numbers, keywords
-        println!("Unexpected charcter: {}", ch);
-        None
-      }
-    }
+  /// Peeks at the next char without consuming it
+  fn peek(&mut self) -> Option<&char> {
+    self.chars.peek()
   }
 
-  /// Create a new `Token` from the current lexeme span.
-  /// The span is from `start` to `current`
-  fn make_token(&self, token_type: TokenType) -> Token {
-    let text: String = self.chars[self.start..self.current].iter().collect();
-    Token {
-      token_type,
-      lexeme: text,
-      line: self.line,
-    }
+  /// Peeks at the char two positons ahead without consuming it
+  fn peek_next(&mut self) -> Option<char> {
+    let mut temp_chars = self.chars.clone();
+    temp_chars.next(); // Consume the first char
+    temp_chars.next() // Peek at the second
   }
 
-  //----------------------------- Helper Methods ----------------------------
-
-  /// Return `true` if the lexer has reached the end of the source string.
-  fn is_at_end(&self) -> bool {
-    self.current >= self.chars.len()
-  }
-
-  /// Comsumes and return the next char in the source.
-  /// Advance the 'current' pointer forward.
-  /// Returns a 'char' not a byte.
-  fn advance(&mut self) -> char {
-    let ch = self.chars[self.current];
-    self.current += 1;
-    ch
-  }
-
-  /// Conditionally consumes the next char if it matches `expected`
-  /// Returns `true` if the match succeeded and advanced the cursor.
-  /// Otherwise, returns `false` and does not advance.
+  /// Checks if the next char matches `expected` and  consumes it if so
   fn match_char(&mut self, expected: char) -> bool {
-    if self.is_at_end() {
-      return false;
+    if let Some(&c) = self.peek() {
+      if c == expected {
+        self.advance();
+        true
+      } else {
+        false
+      }
+    } else {
+      false
     }
-    if self.source[self.current..].chars().next().unwrap() != expected {
-      return false;
-    }
-
-    self.current += expected.len_utf8();
-    true
   }
 
-  /// Scans a number literal: integers or floats
-  fn number(&mut self) -> Option<Token> {
-    while let Some(c) = self.peek() {
-      if c.is_ascii_digit() {
+  /// Checks if the current cursor is a tthe end of the input
+  fn is_at_end(&mut self) -> bool {
+    self.peek().is_none()
+  }
+
+  /// Create a token from the `start` to `current` position
+  fn create_token(&self, token_type: Token) -> (usize, Token, usize) {
+    (self.start, token_type, self.current)
+  }
+
+  /// Skips whitespace and comments.
+  fn skip_whitespace_and_comments(&mut self) {
+    loop {
+      if self.is_at_end() {
+        return;
+      }
+      let c = *self.peek().unwrap();
+
+      match c {
+        ' ' | '\r' | '\t' | '\n' => {
+          self.advance();
+        }
+        '/' => {
+          // Check for comments
+          if self.peek_next() == Some('/') {
+            // Single-line comment //
+            self.advance(); // Consume '/'
+            self.advance(); // consumes sencond '/'
+            while self.peek() != Some(&'\n') && !self.is_at_end() {
+              self.advance(); // Consume chars until newline or EOF
+            }
+            self.advance(); // Consume the newline (if present)
+          } else if self.peek_next() == Some('*') {
+            // Multi-line comment /* ... */
+            self.advance(); // comsume '/'
+            self.advance(); // consume '*'
+            let mut found_end_comment = false;
+            while !self.is_at_end() {
+              if self.peek() == Some(&'*') && self.peek_next() == Some('/') {
+                self.advance(); // Consume '*'
+                self.advance(); // Consume '/''
+                found_end_comment = true;
+                break;
+              }
+              self.advance();
+            }
+            if !found_end_comment {
+              // reserved for report an error later
+              // for now, just breaks the lexer
+              return;
+            }
+          } else {
+            break; // Not a comment, break the loop to process '/' as an operator
+          }
+        }
+        _ => break, // Not a whitespace of comment, exit loop
+      }
+    }
+  }
+
+  // Scan a string literal
+  fn string(&mut self) -> Result<Token, String> {
+    while self.peek() != Some(&'"') && !self.is_at_end() {
+      if self.peek() == Some(&'\\') {
         self.advance();
-      } else {
-        break;
+        if self.is_at_end() {
+          return Err(format!("Unterminated escape sequence at {}", self.start));
+        }
+      }
+      self.advance();
+    }
+
+    if self.is_at_end() {
+      return Err(format!("Unterminated string at {}", self.start));
+    }
+    self.advance(); // Consume the closing '""'
+
+    // Extract the string value (exclude surrounding quotes)
+    let value = self.input[self.start + 1..self.current - 1].to_string();
+
+    // Simple unescape for \"
+    let unescaped_value = value.replace("\\\"", "\"");
+    Ok(Token::StringLiteral(unescaped_value))
+  }
+
+  /// Scans a number literal (integer or float)
+  fn number(&mut self) -> Result<Token, String> {
+    while self.peek().map_or(false, |&c| c.is_ascii_digit()) {
+      self.advance();
+    }
+
+    // Look for a fractional part
+    if self.peek() == Some(&'.') && self.peek_next().map_or(false, |c| c.is_ascii_digit()) {
+      self.advance(); // Consume '.'
+      while self.peek().map_or(false, |&c| c.is_ascii_digit()) {
+        self.advance();
       }
     }
 
-    // Check for a fractional part
-    if self.peek() == Some('.')
-      && self
-        .peek_next()
-        .map(|c| c.is_ascii_digit())
-        .unwrap_or(false)
+    // Look for exponent part
+    if self.peek().map_or(false, |&c| c == 'e' || c == 'E') {
+      self.advance(); // Consume 'e' or 'E'
+      if self.peek().map_or(false, |&c| c == '+' || c == '-') {
+        self.advance(); // Consume '+'  or '-'
+      }
+      if self.peek().map_or(false, |&c| c.is_ascii_digit()) {
+        while self.peek().map_or(false, |&c| c.is_ascii_digit()) {
+          self.advance();
+        }
+      } else {
+        return Err(format!(
+          "Malformed exponent in number at byte offset{}",
+          self.start
+        ));
+      }
+    }
+
+    let value_str = &self.input[self.start..self.current];
+    value_str
+      .parse::<f64>()
+      .map(Token::Number)
+      .map_err(|e| format!("Invalid number literal '{}': {}", value_str, e))
+  }
+
+  /// Scan an Idnentifier or Keyword
+  fn identifier(&mut self) -> Token {
+    while self
+      .peek()
+      .map_or(false, |&c| c.is_ascii_alphanumeric() || c == '_')
     {
       self.advance();
-      while let Some(c) = self.peek() {
-        if c.is_ascii_digit() {
-          self.advance();
-        } else {
-          break;
-        }
-      }
     }
 
-    Some(self.make_token(TokenType::Number))
+    let text = &self.input[self.start..self.current];
+    match text {
+      "var" => Token::Var,
+      "function" => Token::Function,
+      "if" => Token::If,
+      "else" => Token::Else,
+      "while" => Token::While,
+      "foreach" => Token::Foreach,
+      "in" => Token::In,
+      "return" => Token::Return,
+      "panic" => Token::Panic,
+      "check" => Token::Check,
+      "returns" => Token::Returns,
+      "int" => Token::Int,
+      "string" => Token::String,
+      "boolean" => Token::Boolean,
+      "float" => Token::Float,
+      "true" => Token::True,
+      "false" => Token::False,
+      _ => Token::Identifier(text.to_string()),
+    }
   }
+}
 
-  /// Peeks at the current char without advancing
-  /// Returns `None` if at end of input
-  fn peek(&self) -> Option<char> {
-    self.source[self.current..].chars().next()
-  }
+// Implement the iterator trait for the lexer
+impl<'input> Iterator for Lexer<'input> {
+  type Item = Result<(usize, Token, usize), String>;
 
-  /// Peeks at the char after the current one without advancing
-  fn peek_next(&self) -> Option<char> {
-    let mut chars = self.source[self.current..].chars();
-    chars.next(); // skip current
-    chars.next() // return next
+  fn next(&mut self) -> Option<Self::Item> {
+    // Skip whitespace and comments before finding the next token
+    self.skip_whitespace_and_comments();
+
+    // Update start position for the new token after skipping
+    self.start = self.current;
+
+    // Check for end of input AFTER skipping
+    let c = self.advance()?; // Try to advance and get the first char of the next token
+                             // If None, it means we're at the end of the file
+
+    let result = match c {
+      '(' => Ok(self.create_token(Token::LParen)),
+      ')' => Ok(self.create_token(Token::RParen)),
+      '{' => Ok(self.create_token(Token::LBrace)),
+      '}' => Ok(self.create_token(Token::RBrace)),
+      ':' => Ok(self.create_token(Token::Colon)),
+      ';' => Ok(self.create_token(Token::Semicolon)),
+      ',' => Ok(self.create_token(Token::Comma)),
+      '+' => Ok(self.create_token(Token::Plus)),
+      '-' => Ok(self.create_token(Token::Minus)),
+      '*' => Ok(self.create_token(Token::Star)),
+      '/' => Ok(self.create_token(Token::Slash)),
+      '!' => {
+        if self.match_char('=') {
+          Ok(self.create_token(Token::BangEq))
+        } else {
+          Ok(self.create_token(Token::Bang))
+        }
+      }
+      '=' => {
+        if self.match_char('=') {
+          Ok(self.create_token(Token::EqEq))
+        } else {
+          Ok(self.create_token(Token::Eq))
+        }
+      }
+      '>' => {
+        if self.match_char('=') {
+          Ok(self.create_token(Token::Ge))
+        } else {
+          Ok(self.create_token(Token::Gt))
+        }
+      }
+      '<' => {
+        if self.match_char('=') {
+          Ok(self.create_token(Token::Le))
+        } else {
+          Ok(self.create_token(Token::Lt))
+        }
+      }
+      '&' => {
+        if self.match_char('&') {
+          Ok(self.create_token(Token::AmpAmp))
+        } else {
+          Err(format!(
+            "Unexpected character: '&' at byte offset {}",
+            self.start
+          ))
+        }
+      }
+      '|' => {
+        if self.match_char('|') {
+          Ok(self.create_token(Token::PipePipe))
+        } else {
+          Err(format!(
+            "Unexpected character: '|' at byte offset {}",
+            self.start
+          ))
+        }
+      }
+      '"' => self.string().map(|t| self.create_token(t)), // Scan string literal
+      d if d.is_ascii_digit() => self.number().map(|t| self.create_token(t)), // Scan number literal
+      a if a.is_ascii_alphabetic() || a == '_' =>  {
+        // Call the mutable method first
+        let id_token = self.identifier();
+        // Now that the mutable borrow from `self.identifier()` is released
+        Ok(self.create_token(id_token))
+      },
+      _ => Err(format!(
+        "Unexpected charcter: '{}' at byte offset {}",
+        c, self.start
+      )),
+    };
+
+    Some(result)
   }
 }

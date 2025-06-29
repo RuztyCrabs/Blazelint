@@ -1,30 +1,50 @@
 mod ast;
-mod error;
 mod lexer;
-mod linter;
 mod parser;
-mod token;
 
 use lexer::Lexer;
-use token::{Token, TokenType};
+use parser::Parser;
 
 fn main() {
-  println!("Welcome to BlazeLint! ");
+  println!("Ballerina Linter (WIP)");
 
-  // hard codeded a dummy bal syntax for testing the lexer
-  let source = "() { } , . - + * ; == != >= <= 123 1.23 12.".to_string();
-  let mut lexer = Lexer::new(source);
-  let tokens = lexer.scan_tokens();
+  let input_code = r#"
+     // This is a test comment
+        var myInt: int = 123;
+        function calculate(a: float, b: float) returns float {
+            /* Multi-
+             line
+             * comment */
+            if (a > b || a != b) {
+                return (a * b) / (a + b); // Complex expression
+            } else {
+                panic "Invalid operation!";
+            }
+        }
+        var message: string = "Hello, Ballerina!";
+        var isDone: boolean = true;
+        var myFloat: float = 0.005e+2;
+        another_ident_123 = 456;
+  "#;
 
-  for token in tokens {
-    println!("{:?}", token);
+  println!("--- Input Code ---");
+  println!("{}", input_code);
+  println!("----------------------------\n");
+
+  let lexer = Lexer::new(input_code);
+  let tokens: Vec<_> = lexer.collect::<Result<_, _>>().unwrap();
+  let mut parser = Parser::new(tokens.clone());
+
+  println!("--- Tokens ---");
+  for (start, token, end) in tokens {
+    println!("Token: {:?} ({}..{})", token, start, end);
   }
+  println!("----------------------------\n");
+  println!("Lexing complete!");
 
-  //    let example_token = Token {
-  //        token_type: TokenType::Var,
-  //        lexeme: "Var".to_string(),
-  //        line: 1,
-  //    };
-  //
-  //    println!("{:?}", example_token);
+  println!("-- AST --");
+  let ast = parser.parse();
+  for stmt in ast {
+    println!("{:#?}", stmt);
+  }
 }

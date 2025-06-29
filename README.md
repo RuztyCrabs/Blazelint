@@ -24,32 +24,27 @@ cd Blazeint
 ```bash
 cargo run blazelint
 ```
+# TODO
 
-## Todo
+### Completed:
 
-1. [ ] **Lexer** – Convert source code into a stream of tokens  
-   - [x] Single-character tokens (`+`, `-`, `;`, etc.)
-   - [x] Double-character tokens (`==`, `!=`, etc.)
-   - [x] Number literals
-   - [ ] Identifiers and keywords
-   - [ ] Strings
-   - [ ] Comments
-2. [ ] **Parser** – Convert tokens into an Abstract Syntax Tree (AST)  
-   - [ ] Expressions
-   - [ ] Statements (if, while, etc.)
-   - [ ] Declarations (variables, functions)
-3. [ ] **AST Representation** – Define node types for expressions and statements  
-4. [ ] **Semantic Analyzer** – Validate and annotate the AST  
-   - [ ] Scope and symbol tracking
-   - [ ] Type checks (if needed)
-5. [ ] **Linter Passes** – Implement actual lint rules  
-   - [ ] Unused variable detection
-   - [ ] Variable shadowing
-   - [ ] Unreachable code
-   - [ ] Naming conventions
-6. [ ] **Error Reporting** – Show clear messages with line/column info  
-7. [ ] **Configuration Support** – Allow enabling/disabling lints via config file (`.blazelint.toml`)  
-8. [ ] **Testing Framework** – Unit + integration tests for each component  
-9. [ ] **Command-Line Interface (CLI)** – Input/output via files or stdin  
-10. [ ] **Performance Optimizations** – Handle large files efficiently  
-11. [ ] **Documentation & Examples** – Include usage guide and rule reference
+- [x] Lexer: Fully implemented and capable of tokenizing Ballerina syntax.
+- [x] Parser: Implemented with support for:
+  - [x] Variable declarations
+  - [x] Function declarations
+  - [x] If statements
+  - [x] Return statements
+  - [x] Panic statements
+  - [x] Basic expressions (equality, comparison, term, factor, unary, primary)
+  - [x] Logical OR (`||`) and AND (`&&`) operators
+  - [x] Assignment expressions
+  - [x] Type parsing
+
+### Remaining for MVP Linter:
+
+- [ ] **Error Handling and Reporting:** Implement graceful error recovery and provide informative error messages instead of panicking.
+- [ ] **Semantic Analysis:** Develop checks for type consistency, variable scope, unused variables, and other semantic rules.
+- [ ] **Linter Rules:** Define and implement specific linting rules (e.g., naming conventions, code style, best practices).
+- [ ] **Reporting/Output:** Create a mechanism to report linting issues to the user (e.g., console output, SARIF format).
+- [ ] **Configuration:** Allow users to configure linting rules (e.g., enable/disable rules, set severity).
+- [ ] **CLI Arguments:** Handle command-line arguments for specifying files/directories to lint, configuration files, etc.
