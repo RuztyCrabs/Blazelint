@@ -19,11 +19,17 @@ git clone https://github.com/RuztyCrabs/Blazelint.git
 cd Blazeint
 ```
 
-3. Run in debug mode:
+3. Run:
 
 ```bash
-cargo run blazelint
+cargo run test.bal
 ```
+
+## Documentation
+
+*   [Explanation of Blazelint's Architecture and Design](explain.md)
+*   [Backus-Naur Form (BNF) Grammar for Ballerina Subset](BNF.md)
+
 # TODO
 
 ### Completed:
