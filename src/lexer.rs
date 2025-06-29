@@ -1,6 +1,6 @@
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
-  // Keywords
+  /// Keywords
   Var,
   Function,
   If,
@@ -259,7 +259,7 @@ impl<'input> Lexer<'input> {
   }
 }
 
-// Implement the iterator trait for the lexer
+/// Implement the iterator trait for the lexer
 impl<'input> Iterator for Lexer<'input> {
   type Item = Result<(usize, Token, usize), String>;
 
