@@ -4,40 +4,39 @@ mod parser;
 
 use lexer::Lexer;
 use parser::Parser;
+use std::env;
+use std::fs;
+use std::process;
 
-/// Main function of the Blazelint.
+/// Main function of the Blazelint application.
 ///
 /// This function initializes the lexer and parser, processes the input code,
 /// and prints the generated tokens and Abstract Syntax Tree (AST).
 fn main() {
   println!("Ballerina Linter (WIP)");
 
-  // Example input code to be analyzed.
-  let input_code = r#"
-     // This is a test comment
-        var myInt: int = 123;
-        function calculate(a: float, b: float) returns float {
-            /* Multi-
-             line
-             * comment */
-            if (a > b || a != b) {
-                return (a * b) / (a + b); // Complex expression
-            } else {
-                panic "Invalid operation!";
-            }
-        }
-        var message: string = "Hello, Ballerina!";
-        var isDone: boolean = true;
-        var myFloat: float = 0.005e+2;
-        another_ident_123 = 456;
-  "#;
+  let args: Vec<String> = env::args().collect();
+
+  if args.len() < 2 {
+    eprintln!("Usage: {} <file_path>", args[0]);
+    process::exit(1);
+  }
+
+  let file_path = &args[1];
+  let input_code = match fs::read_to_string(file_path) {
+    Ok(code) => code,
+    Err(err) => {
+      eprintln!("Error reading file {}: {}", file_path, err);
+      process::exit(1);
+    }
+  };
 
   println!("--- Input Code ---");
   println!("{}", input_code);
   println!("----------------------------\n");
 
   // Initialize the lexer with the input code and collect tokens.
-  let lexer = Lexer::new(input_code);
+  let lexer = Lexer::new(&input_code);
   let tokens: Vec<_> = lexer.collect::<Result<_, _>>().unwrap();
   // Initialize the parser with the collected tokens.
   let mut parser = Parser::new(tokens.clone());

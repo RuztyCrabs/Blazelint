@@ -1,6 +1,2 @@
 /target
-ballerina-linter.toml
-hello.bal
-implementation.md
-
-
+test.bal
