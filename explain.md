@@ -1,6 +1,6 @@
 # Blazelint: From Source Code to Abstract Syntax Tree (AST)
 
-Blazelint is a linter program designed to analyze source code written in a Ballerina language. Its primary function is to transform raw source code into an Abstract Syntax Tree (AST), which is a tree representation of the abstract syntactic structure of source code. This document explains the process, detailing the roles of the Lexer and Parser components.
+Blazelint is a linter program designed to analyze source code written in Ballerina language. Its primary function is to transform raw source code into an Abstract Syntax Tree (AST), which is a tree representation of the abstract syntactic structure of source code. This document explains the process, detailing the roles of the Lexer and Parser components.
 
 ## Overall Flow
 
@@ -328,8 +328,3 @@ pub enum Stmt {
 }
 ```
 
-## Conclusion
-
-By combining the `Lexer`'s ability to break down raw text into tokens and the `Parser`'s recursive descent logic to build a structured AST, Blazelint effectively transforms human-readable code into a machine-understandable representation. This AST can then be used for various purposes, such as static analysis, interpretation, or code generation.
-
-```
