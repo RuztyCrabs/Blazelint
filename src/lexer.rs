@@ -1,3 +1,5 @@
+use crate::errors::LexError;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
   /// Keywords
@@ -35,75 +37,88 @@ impl<'input> Lexer<'input> {
     }
   }
 
-  /// Create a token from the `start` to `current` position
+  /// Creates a token triple `[start, token, end)` covering the current lexeme.
   fn create_token(&self, token_type: Token) -> (usize, Token, usize) {
     (self.start, token_type, self.current)
   }
 
-  /// Skips whitespace and comments.
-  fn skip_whitespace_and_comments(&mut self) {
+  /// Skips whitespace and comments, reporting unterminated block comments as errors.
+  fn skip_whitespace_and_comments(&mut self) -> Result<(), LexError> {
     loop {
       if self.is_at_end() {
-        return;
+        return Ok(());
       }
-      let c = *self.peek().unwrap();
+
+      let c = match self.peek() {
+        Some(ch) => *ch,
+        None => return Ok(()),
+      };
 
       match c {
         ' ' | '\r' | '\t' | '\n' => {
           self.advance();
         }
         '/' => {
-          // Check for comments
+          let comment_start = self.current;
           if self.peek_next() == Some('/') {
             // Single-line comment //
             self.advance(); // Consume '/'
-            self.advance(); // consumes sencond '/'
+            self.advance(); // Consume second '/'
             while self.peek() != Some(&'\n') && !self.is_at_end() {
-              self.advance(); // Consume chars until newline or EOF
+              self.advance();
             }
-            self.advance(); // Consume the newline (if present)
+            if self.peek() == Some(&'\n') {
+              self.advance();
+            }
           } else if self.peek_next() == Some('*') {
             // Multi-line comment /* ... */
-            self.advance(); // comsume '/'
+            self.advance(); // consume '/'
             self.advance(); // consume '*'
             let mut found_end_comment = false;
             while !self.is_at_end() {
               if self.peek() == Some(&'*') && self.peek_next() == Some('/') {
                 self.advance(); // Consume '*'
-                self.advance(); // Consume '/''
+                self.advance(); // Consume '/'
                 found_end_comment = true;
                 break;
               }
               self.advance();
             }
             if !found_end_comment {
-              // reserved for report an error later
-              // for now, just breaks the lexer
-              return;
+              return Err(LexError::new(
+                "Unterminated block comment",
+                comment_start..self.current,
+              ));
             }
           } else {
-            break; // Not a comment, break the loop to process '/' as an operator
+            return Ok(());
           }
         }
-        _ => break, // Not a whitespace of comment, exit loop
+        _ => return Ok(()),
       }
     }
   }
 
-  // Scan a string literal
-  fn string(&mut self) -> Result<Token, String> {
+  /// Scans a string literal, producing a `LexError` for unterminated strings or escapes.
+  fn string(&mut self) -> Result<Token, LexError> {
     while self.peek() != Some(&'"') && !self.is_at_end() {
       if self.peek() == Some(&'\\') {
         self.advance();
         if self.is_at_end() {
-          return Err(format!("Unterminated escape sequence at {}", self.start));
+          return Err(LexError::new(
+            format!("Unterminated escape sequence"),
+            self.start..self.current,
+          ));
         }
       }
       self.advance();
     }
 
     if self.is_at_end() {
-      return Err(format!("Unterminated string at {}", self.start));
+      return Err(LexError::new(
+        "Unterminated string literal",
+        self.start..self.current,
+      ));
     }
     self.advance(); // Consume the closing '""'
 
@@ -115,8 +130,8 @@ impl<'input> Lexer<'input> {
     Ok(Token::StringLiteral(unescaped_value))
   }
 
-  /// Scans a number literal (integer or float)
-  fn number(&mut self) -> Result<Token, String> {
+  /// Scans a numeric literal (integer, float, or float with exponent) into a token.
+  fn number(&mut self) -> Result<Token, LexError> {
     while self.peek().map_or(false, |&c| c.is_ascii_digit()) {
       self.advance();
     }
@@ -140,9 +155,9 @@ impl<'input> Lexer<'input> {
           self.advance();
         }
       } else {
-        return Err(format!(
-          "Malformed exponent in number at byte offset{}",
-          self.start
+        return Err(LexError::new(
+          "Malformed exponent in number literal",
+          self.start..self.current,
         ));
       }
     }
@@ -151,10 +166,15 @@ impl<'input> Lexer<'input> {
     value_str
       .parse::<f64>()
       .map(Token::Number)
-      .map_err(|e| format!("Invalid number literal '{}': {}", value_str, e))
+      .map_err(|e| {
+        LexError::new(
+          format!("Invalid number literal '{value_str}': {e}"),
+          self.start..self.current,
+        )
+      })
   }
 
-  /// Scan an Idnentifier or Keyword
+  /// Scans an identifier or recognises a reserved keyword in the Ballerina subset.
   fn identifier(&mut self) -> Token {
     while self
       .peek()
@@ -231,18 +251,22 @@ impl<'input> Lexer<'input> {
 
 /// Implement the iterator trait for the lexer
 impl<'input> Iterator for Lexer<'input> {
-  type Item = Result<(usize, Token, usize), String>;
+  type Item = Result<(usize, Token, usize), LexError>;
 
   fn next(&mut self) -> Option<Self::Item> {
     // Skip whitespace and comments before finding the next token
-    self.skip_whitespace_and_comments();
+    if let Err(err) = self.skip_whitespace_and_comments() {
+      return Some(Err(err));
+    }
 
     // Update start position for the new token after skipping
     self.start = self.current;
 
     // Check for end of input AFTER skipping
-    let c = self.advance()?; // Try to advance and get the first char of the next token
-                             // If None, it means we're at the end of the file
+    let c = match self.advance() {
+      Some(ch) => ch,
+      None => return None, // End of file
+    };
 
     let result = match c {
       '(' => Ok(self.create_token(Token::LParen)),
@@ -288,9 +312,9 @@ impl<'input> Iterator for Lexer<'input> {
         if self.match_char('&') {
           Ok(self.create_token(Token::AmpAmp))
         } else {
-          Err(format!(
-            "Unexpected character: '&' at byte offset {}",
-            self.start
+          Err(LexError::new(
+            "Unexpected single '&' character",
+            self.start..self.current,
           ))
         }
       }
@@ -298,9 +322,9 @@ impl<'input> Iterator for Lexer<'input> {
         if self.match_char('|') {
           Ok(self.create_token(Token::PipePipe))
         } else {
-          Err(format!(
-            "Unexpected character: '|' at byte offset {}",
-            self.start
+          Err(LexError::new(
+            "Unexpected single '|' character",
+            self.start..self.current,
           ))
         }
       }
@@ -312,9 +336,9 @@ impl<'input> Iterator for Lexer<'input> {
         // Now that the mutable borrow from `self.identifier()` is released
         Ok(self.create_token(id_token))
       },
-      _ => Err(format!(
-        "Unexpected charcter: '{}' at byte offset {}",
-        c, self.start
+      _ => Err(LexError::new(
+        format!("Unexpected character: '{c}'"),
+        self.start..self.current,
       )),
     };
 

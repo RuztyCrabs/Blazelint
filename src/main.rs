@@ -1,4 +1,5 @@
 mod ast;
+mod errors;
 mod lexer;
 mod parser;
 
@@ -51,7 +52,17 @@ fn main() {
 
   println!("-- AST --");
   // Parse the tokens to generate the Abstract Syntax Tree (AST).
-  let ast = parser.parse();
+  let ast = match parser.parse() {
+    Ok(ast) => ast,
+    Err(err) => {
+      eprintln!("Parse error: {}", err.message);
+      if let Some(expected) = err.expected {
+        eprintln!("Expected: {}", expected);
+      }
+      eprintln!("Span: {}..{}", err.span.start, err.span.end);
+      process::exit(1);
+    }
+  };
   // Print the AST in a pretty-formatted way.
   for stmt in ast {
     println!("{:#?}", stmt);

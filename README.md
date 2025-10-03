@@ -19,7 +19,7 @@ git clone https://github.com/RuztyCrabs/Blazelint.git
 cd Blazeint
 ```
 
-3. Run:
+3. Run :
 
 ```bash
 cargo run test.bal
