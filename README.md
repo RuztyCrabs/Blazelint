@@ -16,18 +16,17 @@ git clone https://github.com/RuztyCrabs/Blazelint.git
 2. `cd` into the directory:
 
 ```bash
-cd Blazeint
+cd Blazelint
 ```
 
-3. Run:
+3. Run the linter against the sample program:
 
 ```bash
-cargo run test.bal
+cargo run -- test.bal
 ```
 
 ## Documentation
 
-*   [Explanation of Blazelint's Architecture and Design](explain.md)
 *   [Backus-Naur Form (BNF) Grammar for Ballerina Subset](BNF.md)
 
 # TODO
@@ -45,10 +44,11 @@ cargo run test.bal
   - [x] Logical OR (`||`) and AND (`&&`) operators
   - [x] Assignment expressions
   - [x] Type parsing
+- [x] Structured lexer/parser error propagation with span-aware diagnostics
 
-### Remaining for MVP Linter:
+### Remainings for the MVP: 
 
-- [ ] **Error Handling and Reporting:** Implement graceful error recovery and provide informative error messages instead of panicking.
+- [ ] **Diagnostic Reporting:** Convert collected lexical/parser errors into user-friendly diagnostics (line/column, highlighting, recovery).
 - [ ] **Semantic Analysis:** Develop checks for type consistency, variable scope, unused variables, and other semantic rules.
 - [ ] **Linter Rules:** Define and implement specific linting rules (e.g., naming conventions, code style, best practices).
 - [ ] **Reporting/Output:** Create a mechanism to report linting issues to the user (e.g., console output, SARIF format).
