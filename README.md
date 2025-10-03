@@ -27,7 +27,6 @@ cargo run -- test.bal
 
 ## Documentation
 
-*   [Explanation of Blazelint's Architecture and Design](explain.md)
 *   [Backus-Naur Form (BNF) Grammar for Ballerina Subset](BNF.md)
 
 # TODO
