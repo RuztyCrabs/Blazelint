@@ -2,12 +2,15 @@ mod ast;
 mod errors;
 mod lexer;
 mod parser;
+mod diagnostics;
+
 
 use lexer::Lexer;
 use parser::Parser;
 use std::env;
 use std::fs;
 use std::process;
+use diagnostics::report_error;
 
 /// Main function of the Blazelint application.
 ///
@@ -55,11 +58,8 @@ fn main() {
   let ast = match parser.parse() {
     Ok(ast) => ast,
     Err(err) => {
-      eprintln!("Parse error: {}", err.message);
-      if let Some(expected) = err.expected {
-        eprintln!("Expected: {}", expected);
-      }
-      eprintln!("Span: {}..{}", err.span.start, err.span.end);
+      let diagnostic = err.into();
+      report_error(&mut std::io::stderr(), file_path, &input_code, &diagnostic).unwrap();
       process::exit(1);
     }
   };
