@@ -48,7 +48,7 @@ cargo run -- test.bal
 
 ### Remainings for the MVP: 
 
-- [ ] **Diagnostic Reporting:** Convert collected lexical/parser errors into user-friendly diagnostics (line/column, highlighting, recovery).
+- [x] **Diagnostic Reporting:** Convert collected lexical/parser errors into user-friendly diagnostics (line/column, highlighting, recovery).
 - [ ] **Semantic Analysis:** Develop checks for type consistency, variable scope, unused variables, and other semantic rules.
 - [ ] **Linter Rules:** Define and implement specific linting rules (e.g., naming conventions, code style, best practices).
 - [ ] **Reporting/Output:** Create a mechanism to report linting issues to the user (e.g., console output, SARIF format).
