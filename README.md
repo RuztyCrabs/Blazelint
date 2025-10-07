@@ -29,6 +29,20 @@ cargo run -- test.bal
 
 *   [Backus-Naur Form (BNF) Grammar for Ballerina Subset](BNF.md)
 
+## Development
+
+Install the required Rust components:
+
+```bash
+rustup component add clippy rustfmt
+```
+
+Run all formatter, lint, and test checks locally before opening a pull request:
+
+```bash
+bash scripts/check.sh
+```
+
 # TODO
 
 ### Completed:

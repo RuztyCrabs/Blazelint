@@ -1,10 +1,5 @@
 /target
 /docs
-test.bal
 explain.md
 progress.md
 parser_info.md
-
-# Ignore editor settings except for debugger configurations
-.vscode/
-!.vscode/launch.json

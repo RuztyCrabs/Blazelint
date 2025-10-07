@@ -2,7 +2,7 @@ use assert_cmd::Command;
 use std::fs;
 use std::process::Output;
 
-const SAMPLE_SUCCESS: &str = include_str!("../test.bal");
+const SAMPLE_SUCCESS: &str = include_str!("test.bal");
 
 fn run_cli(source: &str) -> Output {
     let file = tempfile::NamedTempFile::new().expect("create temp file");
