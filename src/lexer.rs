@@ -146,7 +146,7 @@ impl<'input> Lexer<'input> {
                 self.advance();
                 if self.is_at_end() {
                     return Err(LexError::new(
-                        format!("Unterminated escape sequence"),
+                        "Unterminated escape sequence",
                         self.start..self.current,
                     ));
                 }
@@ -172,26 +172,26 @@ impl<'input> Lexer<'input> {
 
     /// Scans a numeric literal (integer, float, or float with exponent) into a token.
     fn number(&mut self) -> Result<Token, LexError> {
-        while self.peek().map_or(false, |&c| c.is_ascii_digit()) {
+        while self.peek().is_some_and(|&c| c.is_ascii_digit()) {
             self.advance();
         }
 
         // Look for a fractional part
-        if self.peek() == Some(&'.') && self.peek_next().map_or(false, |c| c.is_ascii_digit()) {
+        if self.peek() == Some(&'.') && self.peek_next().is_some_and(|c| c.is_ascii_digit()) {
             self.advance(); // Consume '.'
-            while self.peek().map_or(false, |&c| c.is_ascii_digit()) {
+            while self.peek().is_some_and(|&c| c.is_ascii_digit()) {
                 self.advance();
             }
         }
 
         // Look for exponent part
-        if self.peek().map_or(false, |&c| c == 'e' || c == 'E') {
+        if self.peek().is_some_and(|&c| c == 'e' || c == 'E') {
             self.advance(); // Consume 'e' or 'E'
-            if self.peek().map_or(false, |&c| c == '+' || c == '-') {
+            if self.peek().is_some_and(|&c| c == '+' || c == '-') {
                 self.advance(); // Consume '+'  or '-'
             }
-            if self.peek().map_or(false, |&c| c.is_ascii_digit()) {
-                while self.peek().map_or(false, |&c| c.is_ascii_digit()) {
+            if self.peek().is_some_and(|&c| c.is_ascii_digit()) {
+                while self.peek().is_some_and(|&c| c.is_ascii_digit()) {
                     self.advance();
                 }
             } else {
@@ -215,7 +215,7 @@ impl<'input> Lexer<'input> {
     fn identifier(&mut self) -> Token {
         while self
             .peek()
-            .map_or(false, |&c| c.is_ascii_alphanumeric() || c == '_')
+            .is_some_and(|&c| c.is_ascii_alphanumeric() || c == '_')
         {
             self.advance();
         }
@@ -293,7 +293,7 @@ impl<'input> Lexer<'input> {
 }
 
 /// Implements `Iterator` so the lexer can be used directly in `for` loops.
-impl<'input> Iterator for Lexer<'input> {
+impl Iterator for Lexer<'_> {
     type Item = Result<(usize, Token, usize), LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -306,10 +306,7 @@ impl<'input> Iterator for Lexer<'input> {
         self.start = self.current;
 
         // Check for end of input AFTER skipping
-        let c = match self.advance() {
-            Some(ch) => ch,
-            None => return None, // End of file
-        };
+        let c = self.advance()?;
 
         let result = match c {
             '(' => Ok(self.create_token(Token::LParen)),

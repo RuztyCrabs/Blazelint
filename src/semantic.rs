@@ -1,4 +1,4 @@
-//! Semantic analysis for the Blazelint front-end.
+//! Semantic analysis for the Blazelint.
 //!
 //! This module walks the parser-produced abstract syntax tree, tracks lexical
 //! scopes, and enforces the subset of Ballerina typing rules supported by the
@@ -494,14 +494,15 @@ impl Analyzer {
 
     /// Determines whether two operands can participate in an equality comparison.
     fn can_compare(&self, left: &Type, right: &Type) -> bool {
-        match (left, right) {
+        matches!(
+            (left, right),
             (Type::Int, Type::Int)
-            | (Type::Float, Type::Float)
-            | (Type::Boolean, Type::Boolean)
-            | (Type::String, Type::String) => true,
-            (Type::Int, Type::Float) | (Type::Float, Type::Int) => true,
-            _ => false,
-        }
+                | (Type::Float, Type::Float)
+                | (Type::Boolean, Type::Boolean)
+                | (Type::String, Type::String)
+                | (Type::Int, Type::Float)
+                | (Type::Float, Type::Int)
+        )
     }
 
     /// Resolves an identifier reference, emitting diagnostics when undefined or uninitialised.

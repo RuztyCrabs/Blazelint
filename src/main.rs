@@ -180,8 +180,8 @@ fn build_highlight_line(
     let prefix_chars = prefix_slice.chars().count();
     let highlight_chars = highlight_slice.chars().count().max(1);
 
-    let spaces: String = std::iter::repeat(' ').take(prefix_chars).collect();
-    let carets: String = std::iter::repeat('^').take(highlight_chars).collect();
+    let spaces = " ".repeat(prefix_chars);
+    let carets = "^".repeat(highlight_chars);
 
     format!("{}{}", spaces, carets)
 }

@@ -594,7 +594,7 @@ impl Parser {
 
     /// Consumes the current token and returns an owned clone for pattern matching.
     fn advance_owned(&mut self) -> ParseResult<Token> {
-        self.advance().map(|token| token.clone())
+        self.advance().cloned()
     }
 
     /// Checks whether the current token matches the provided token kind.
