@@ -1,38 +1,41 @@
 ```bnf
-<program> ::= <statement>*
+<program> ::= <declaration>*
 
-<statement> ::= <var_declaration>
-              | <function_declaration>
-              | <if_statement>
+<declaration> ::= <var_declaration>
+                | <function_declaration>
+                | <statement>
+
+<var_declaration> ::= <local_init_var_decl>
+                    | <local_no_init_var_decl>
+
+<local_init_var_decl> ::= ["final"] <typed_binding_pattern> "=" <expression> ";"
+<local_no_init_var_decl> ::= ["final"] <type_descriptor> <identifier> ";"
+
+<typed_binding_pattern> ::= "var" <identifier>
+                          | <type_descriptor> <identifier>
+
+<type_descriptor> ::= "int" | "string" | "boolean" | "float" | <identifier>
+
+<function_declaration> ::= "function" <identifier> "(" <parameters> ")" ["returns" <type_descriptor>] <block>
+
+<parameters> ::= <parameter> ("," <parameter>)* | ε
+
+<parameter> ::= <identifier> ":" <type_descriptor>
+
+<statement> ::= <if_statement>
               | <return_statement>
               | <panic_statement>
               | <expression_statement>
 
-<var_declaration> ::= "var" <identifier> ":" <type> "=" <expression> ";"
-
-<function_declaration> ::= "function" <identifier> "(" <parameters> ")" "returns" <type> <block>
-
-<parameters> ::= <parameter> ("," <parameter>)* | ε
-
-<parameter> ::= <identifier> ":" <type>
-
-<type> ::= "int" | "string" | "boolean" | "float"
-
 <if_statement> ::= "if" "(" <expression> ")" <block> ("else" <block>)?
-
-<while_statement> ::= "while" "(" <expression> ")" <block>
-
-<foreach_statement> ::= "foreach" "(" <identifier> "in" <expression> ")" <block>
 
 <return_statement> ::= "return" <expression>? ";"
 
 <panic_statement> ::= "panic" <expression> ";"
 
-<check_statement> ::= "check" <expression> ";"
-
 <expression_statement> ::= <expression> ";"
 
-<block> ::= "{" <statement>* "}"
+<block> ::= "{" <declaration>* "}"
 
 <expression> ::= <assignment>
 

@@ -2,5 +2,9 @@
 name = "blazelint"
 version = "0.1.0"
 edition = "2021"
-authors = ["Chamal1120"]
-description = "A simple linter for Ballerina programming language"
+authors = ["Chamal1120, RukshanRanasinghe, SubhodaPathum"]
+description = "A code linter for Ballerina programming language"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+tempfile = "3.10"
