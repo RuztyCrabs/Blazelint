@@ -45,12 +45,12 @@ cargo run -- test.bal
   - [x] Assignment expressions
   - [x] Type parsing
 - [x] Structured lexer/parser error propagation with span-aware diagnostics
+- [x] Semantic analysis pass validating scope, type compatibility, finals, and returns
+- [x] Diagnostic reporting pipeline that surfaces lex/parse/semantic issues with span highlights
 
 ### Remainings for the MVP: 
 
-- [ ] **Diagnostic Reporting:** Convert collected lexical/parser errors into user-friendly diagnostics (line/column, highlighting, recovery).
-- [ ] **Semantic Analysis:** Develop checks for type consistency, variable scope, unused variables, and other semantic rules.
 - [ ] **Linter Rules:** Define and implement specific linting rules (e.g., naming conventions, code style, best practices).
-- [ ] **Reporting/Output:** Create a mechanism to report linting issues to the user (e.g., console output, SARIF format).
-- [ ] **Configuration:** Allow users to configure linting rules (e.g., enable/disable rules, set severity).
+- [ ] **Reporting/Output:** Create a mechanism to report linting issues to the user (e.g., nicely formatted console output).
+- [ ] **Configuration:** Allow users to configure linting rules using .blazerc file(e.g., enable/disable rules, set severity).
 - [ ] **CLI Arguments:** Handle command-line arguments for specifying files/directories to lint, configuration files, etc.
