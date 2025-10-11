@@ -1,12 +1,20 @@
 mod ast;
 mod errors;
 mod lexer;
+mod linter;
 mod parser;
 mod semantic;
 
 use ast::Stmt;
 use errors::{Diagnostic, DiagnosticKind};
 use lexer::Lexer;
+use linter::{
+    // Existing rules
+    rules::{
+        camel_case::CamelCase, 
+        },
+    Rule,
+};
 use parser::Parser;
 use semantic::analyze;
 use std::env;
@@ -46,7 +54,8 @@ fn main() {
             if let Err(diagnostics) = analyze(&ast) {
                 exit_with_diagnostics(&input_code, &line_starts, diagnostics);
             }
-            print_ast(&ast)
+            print_ast(&ast);
+            run_linter(&ast, &input_code, &line_starts);
         }
         Err(diagnostic) => exit_with_diagnostics(&input_code, &line_starts, vec![diagnostic]),
     }
@@ -106,6 +115,37 @@ fn print_ast(ast: &[Stmt]) {
     println!("-- AST --");
     for stmt in ast {
         println!("{:#?}", stmt);
+    }
+}
+
+///
+/// This function iterates through each statement in the AST and applies a predefined
+/// set of linting rules. If any rule violations are found, they are collected and
+/// printed to the console using the provided source code and line information for
+/// context.
+///
+/// # Args
+///
+/// * `ast` - A slice of `Stmt` representing the AST to be linted.
+/// * `source` - The source code string, used for displaying diagnostic messages.
+/// * `line_starts` - A slice of byte offsets, where each offset is the start of a new line.
+///   This is used to convert a diagnostic's position into a line and column number.
+fn run_linter(ast: &[Stmt], source: &str, line_starts: &[usize]) {
+    // if you add a new rule then add that same as the CamelCase
+    let rules: Vec<Box<dyn Rule>> = vec![
+        Box::new(CamelCase)
+    ];
+
+    let mut diagnostics = Vec::new();
+
+    for stmt in ast {
+        for rule in &rules {
+            diagnostics.extend(rule.validate(stmt));
+        }
+    }
+
+    if !diagnostics.is_empty() {
+        print_diagnostics(source, line_starts, &diagnostics);
     }
 }
 
@@ -200,6 +240,7 @@ fn print_diagnostics(source: &str, line_starts: &[usize], diagnostics: &[Diagnos
             DiagnosticKind::Lex => "lexer",
             DiagnosticKind::Parse => "parser",
             DiagnosticKind::Semantic => "semantic",
+            DiagnosticKind::Linter => "linter",
         };
 
         println!("{kind} error: {}", diag.message);
