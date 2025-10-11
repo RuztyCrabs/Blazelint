@@ -1,16 +1,35 @@
 <div align="center">
 
+<img src=".github/assets/blazelint_logo.webp" alt="BlazeLint logo" style="width: 90px; height: auto;">
+
 # BlazeLint
-<p> -- WIP Linter for Ballerina --  </p>
+ -- An efficient linter for Ballerina Lang --
 
 </div>
 
-## Setup
+##
 
-1. Clone the repo:
+> [!CAUTION]
+> This program is still in **early-development** and some critical components are not yet fully implemented.
+
+## Documentation
+
+*   [BNF Grammar for Ballerina Subset](docs/BNF.md)
+*   [Software Requirement Specification (Available through releases)]()
+
+## Building
+
+### Prerequsites
+
+- Git 2.51.0 or newer
+- Rust Toolchain 1.86.0 or newer
+
+### Steps
+
+1. Create a fork and clone to local:
 
 ```bash
-git clone https://github.com/RuztyCrabs/Blazelint.git
+git clone https://github.com/<your-profile-name>/Blazelint.git
 ```
 
 2. `cd` into the directory:
@@ -19,52 +38,28 @@ git clone https://github.com/RuztyCrabs/Blazelint.git
 cd Blazelint
 ```
 
-3. Run the linter against the sample program:
+3. Build with cargo:
 
 ```bash
-cargo run -- test.bal
+cargo build --release
 ```
+> [!NOTE]
+> Cargo build will download any required dependancies automatically but you can explicitly get them using `cargo fetch` if still complains about missing libraries.
 
-## Documentation
-
-*   [Backus-Naur Form (BNF) Grammar for Ballerina Subset](BNF.md)
-
-## Development
-
-Install the required Rust components:
-
-```bash
-rustup component add clippy rustfmt
-```
+## Contributing
 
 Run all formatter, lint, and test checks locally before opening a pull request:
 
 ```bash
 bash scripts/check.sh
 ```
+> [!NOTE]
+> Cargo will download dev dependancies automatically but you can explicitly get them using `cargo fetch` if still complains about missing libraries.
 
-# TODO
+## TODO
 
-### Completed:
+Roadmap of the project can be viewed from [here](TODO.md).
 
-- [x] Lexer: Fully implemented and capable of tokenizing Ballerina syntax.
-- [x] Parser: Implemented with support for:
-  - [x] Variable declarations
-  - [x] Function declarations
-  - [x] If statements
-  - [x] Return statements
-  - [x] Panic statements
-  - [x] Basic expressions (equality, comparison, term, factor, unary, primary)
-  - [x] Logical OR (`||`) and AND (`&&`) operators
-  - [x] Assignment expressions
-  - [x] Type parsing
-- [x] Structured lexer/parser error propagation with span-aware diagnostics
-- [x] Semantic analysis pass validating scope, type compatibility, finals, and returns
-- [x] Diagnostic reporting pipeline that surfaces lex/parse/semantic issues with span highlights
+## License
 
-### Remainings for the MVP: 
-
-- [ ] **Linter Rules:** Define and implement specific linting rules (e.g., naming conventions, code style, best practices).
-- [ ] **Reporting/Output:** Create a mechanism to report linting issues to the user (e.g., nicely formatted console output).
-- [ ] **Configuration:** Allow users to configure linting rules using .blazerc file(e.g., enable/disable rules, set severity).
-- [ ] **CLI Arguments:** Handle command-line arguments for specifying files/directories to lint, configuration files, etc.
+This project is licensed under the [MIT License](LICENSE).

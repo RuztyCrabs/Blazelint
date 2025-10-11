@@ -1,3 +1,5 @@
+## Backus Naur Form for the selected Ballerina grammar subset
+
 ```bnf
 <program> ::= <declaration>*
 
