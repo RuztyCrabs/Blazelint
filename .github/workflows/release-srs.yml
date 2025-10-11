@@ -1,0 +1,31 @@
+name: Release SRS PDF
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Typst
+        uses: typst/community-action@v1
+        with:
+          typst-version: "latest"
+
+      - name: Compile Software Requirements Specification
+        run: typst compile docs/software_requirements_analysis.typ docs/software_requirements_analysis.pdf
+
+      - name: Upload SRS PDF to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: docs/software_requirements_analysis.pdf
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
