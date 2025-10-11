@@ -10,9 +10,7 @@ use errors::{Diagnostic, DiagnosticKind};
 use lexer::Lexer;
 use linter::{
     // Existing rules
-    rules::{
-        camel_case::CamelCase, 
-        },
+    rules::camel_case::CamelCase,
     Rule,
 };
 use parser::Parser;
@@ -132,9 +130,7 @@ fn print_ast(ast: &[Stmt]) {
 ///   This is used to convert a diagnostic's position into a line and column number.
 fn run_linter(ast: &[Stmt], source: &str, line_starts: &[usize]) {
     // if you add a new rule then add that same as the CamelCase
-    let rules: Vec<Box<dyn Rule>> = vec![
-        Box::new(CamelCase)
-    ];
+    let rules: Vec<Box<dyn Rule>> = vec![Box::new(CamelCase)];
 
     let mut diagnostics = Vec::new();
 
