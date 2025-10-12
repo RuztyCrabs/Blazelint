@@ -10,7 +10,7 @@
 ## Documentation
 
 *   [BNF Grammar for Ballerina Subset](docs/BNF.md)
-*   [Software Requirement Specification (Available through releases)]()
+* [Software Requirement Specification (SRS)](https://github.com/Chamal1120/Blazelint/releases/latest/download/software_requirements_analysis.pdf)
 *   [Pipeline overview](docs/pipeline_overview.md)
 
 ## Building

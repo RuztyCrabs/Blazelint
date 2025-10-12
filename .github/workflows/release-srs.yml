@@ -16,9 +16,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install Typst
-        uses: typst/community-action@v1
+        uses: typst-community/setup-typst@v4
         with:
-          typst-version: "latest"
+          typst-version: latest
 
       - name: Compile Software Requirements Specification
         run: typst compile docs/software_requirements_analysis.typ docs/software_requirements_analysis.pdf
