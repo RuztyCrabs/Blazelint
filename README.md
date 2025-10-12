@@ -1,6 +1,6 @@
 ###### *<div align="right"><sub>// by RuztyCrabs</sub></div>*
 
-<img src="docs/assets/Blazelint-banner.webp" alt="BlazeLint banner" style="width: 2000px; height: auto;">
+<img src="https://raw.githubusercontent.com/RuztyCrabs/Blazelint/refs/heads/main/docs/assets/Blazelint-banner.webp" alt="BlazeLint banner" style="width: 2000px; height: auto;">
 
 ##
 
@@ -12,6 +12,19 @@
 *   [BNF Grammar for Ballerina Subset](docs/BNF.md)
 * [Software Requirement Specification (SRS)](https://github.com/Chamal1120/Blazelint/releases/latest/download/software_requirements_analysis.pdf)
 *   [Pipeline overview](docs/pipeline_overview.md)
+
+## Installation
+
+Install the latest published version from crates.io:
+
+```bash
+cargo install blazelint
+```
+
+> [!TIP]
+> Re-run the command with `--force` to pick up newly published releases.
+
+Prefer a prebuilt executable? Download the Linux x86_64 binary from the [latest GitHub release](https://github.com/RuztyCrabs/Blazelint/releases/latest) and place it in your `$PATH`.
 
 ## Building
 
