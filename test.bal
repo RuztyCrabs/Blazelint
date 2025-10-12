@@ -15,4 +15,8 @@ function calculate(a: float, b: float) returns float {
 string message = "Hello, Ballerina!";
 boolean isDone = true;
 float myFloat = 0.005e+2;
-int another_ident_123 = 456;
+//int another_ident_123 = 456;
+const MAXSIZE = 1000;
+//MAXSIZE = 2000;
+const maxSize = 1000;
+

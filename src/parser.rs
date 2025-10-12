@@ -37,7 +37,7 @@ impl Parser {
 
     /// Parses a top-level declaration (variable, function, or statement).
     fn declaration(&mut self) -> ParseResult<Stmt> {
-        if self.starts_var_decl() {
+        if self.starts_var_decl() || matches!(self.peek(), Some(Token::Const)) {
             self.var_decl()
         } else if matches!(self.peek(), Some(Token::Function)) {
             self.function()
@@ -49,6 +49,50 @@ impl Parser {
     /// Parses a `var` declaration and optional type/initializer pair.
     fn var_decl(&mut self) -> ParseResult<Stmt> {
         let mut span_start = self.current_span().start;
+
+        if self.match_token(&[Token::Const])? {
+            if Self::is_type_start(self.peek().unwrap()) {
+                return Err(
+                    self.error_previous("const declarations cannot have a type annotation", None)
+                );
+            }
+
+            let name_token = self.advance_owned()?;
+            let name = match name_token {
+                Token::Identifier(name) => name,
+                _ => {
+                    return Err(self.error_previous(
+                        "Expected constant name after 'const'",
+                        Some("identifier"),
+                    ));
+                }
+            };
+            let name_span = self.previous_span();
+
+            self.consume(
+                Token::Eq,
+                "Constant declarations must be initialized",
+                Some("'='"),
+            )?;
+            let initializer = self.expression()?;
+
+            self.consume(
+                Token::Semicolon,
+                "Expected ';' after constant declaration",
+                Some("';'"),
+            )?;
+
+            let semicolon_span = self.previous_span();
+            let decl_span = span_start.min(name_span.start)..semicolon_span.end;
+
+            return Ok(Stmt::ConstDecl {
+                name,
+                name_span,
+                type_annotation: None,
+                initializer,
+                span: decl_span,
+            });
+        }
 
         let mut is_final = false;
         if self.match_token(&[Token::Final])? {
@@ -689,7 +733,7 @@ impl Parser {
     /// Determines whether the upcoming tokens form the start of a variable declaration.
     fn starts_var_decl(&self) -> bool {
         match self.peek() {
-            Some(Token::Var) | Some(Token::Final) => true,
+            Some(Token::Var) | Some(Token::Final) | Some(Token::Const) => true,
             Some(token) if Self::is_type_start(token) => {
                 matches!(self.peek_n(1), Some(Token::Identifier(_)))
             }

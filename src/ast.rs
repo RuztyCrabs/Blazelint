@@ -103,6 +103,13 @@ pub enum Stmt {
         initializer: Option<Expr>,
         span: Span,
     },
+    ConstDecl {
+        name: String,
+        name_span: Span,
+        type_annotation: Option<String>,
+        initializer: Expr,
+        span: Span,
+    },
     /// An expression statement.
     Expression { expression: Expr, span: Span },
     /// A return statement, optionally with a return value.
@@ -133,6 +140,7 @@ impl Stmt {
     pub fn span(&self) -> &Span {
         match self {
             Stmt::VarDecl { span, .. }
+            | Stmt::ConstDecl { span, .. }
             | Stmt::Expression { span, .. }
             | Stmt::Return { span, .. }
             | Stmt::Panic { span, .. }

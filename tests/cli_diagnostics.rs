@@ -133,3 +133,21 @@ fn semantic_reports_missing_return_value() {
     let out = stdout(&output);
     assert!(out.contains("semantic error: Missing return value"));
 }
+
+#[test]
+fn semantic_reports_const_reassignment() {
+    let code = "const a = 1; a = 2;";
+    let output = run_cli(code);
+    assert!(!output.status.success());
+    let out = stdout(&output);
+    assert!(out.contains("semantic error: Cannot assign to constant"));
+}
+
+#[test]
+fn parser_reports_const_with_type() {
+    let code = "const int a = 1;";
+    let output = run_cli(code);
+    assert!(!output.status.success());
+    let out = stdout(&output);
+    assert!(out.contains("parser error: const declarations cannot have a type annotation"));
+}

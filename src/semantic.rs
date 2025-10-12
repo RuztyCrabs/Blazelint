@@ -45,6 +45,7 @@ impl Type {
 struct Symbol {
     ty: Type,
     is_final: bool,
+    is_const: bool,
     initialized: bool,
     declared_span: Span,
 }
@@ -122,6 +123,7 @@ impl Analyzer {
                 let mut symbol = Symbol {
                     ty: declared_type.clone().unwrap_or(Type::Unknown("var".into())),
                     is_final: *is_final,
+                    is_const: false,
                     initialized: false,
                     declared_span: span.clone(),
                 };
@@ -144,6 +146,57 @@ impl Analyzer {
                         symbol.ty = expr_type;
                     }
                     symbol.initialized = true;
+                }
+
+                self.current_scope_mut().insert(name.clone(), symbol);
+            }
+            Stmt::ConstDecl {
+                name,
+                name_span,
+                type_annotation,
+                initializer,
+                span,
+            } => {
+                let declared_type = type_annotation
+                    .as_ref()
+                    .map(|ann| self.type_from_annotation(ann, span.clone()));
+
+                if let Some(existing) = self.current_scope().get(name) {
+                    self.report(
+                        name_span.clone(),
+                        format!(
+                            "Redeclaration of constant '{name}' (previously declared at {}..{})",
+                            existing.declared_span.start, existing.declared_span.end
+                        ),
+                    );
+                    return;
+                }
+
+                let mut symbol = Symbol {
+                    ty: declared_type
+                        .clone()
+                        .unwrap_or(Type::Unknown("const".into())),
+                    is_final: true,
+                    is_const: true,
+                    initialized: true,
+                    declared_span: span.clone(),
+                };
+
+                let expr_type = self.check_expr(initializer);
+                if let Some(declared) = declared_type {
+                    if !Self::can_assign(&declared, &expr_type) {
+                        self.report(
+                            initializer.span().clone(),
+                            format!(
+                                "Type mismatch in initializer: expected {}, found {}",
+                                declared.description(),
+                                expr_type.description()
+                            ),
+                        );
+                    }
+                    symbol.ty = declared;
+                } else {
+                    symbol.ty = expr_type;
                 }
 
                 self.current_scope_mut().insert(name.clone(), symbol);
@@ -252,6 +305,7 @@ impl Analyzer {
                             Symbol {
                                 ty: param_type,
                                 is_final: true,
+                                is_const: false,
                                 initialized: true,
                                 declared_span: name_span.clone(),
                             },
@@ -427,7 +481,9 @@ impl Analyzer {
     ) -> Type {
         if let Some(symbol) = self.lookup_symbol_mut(name) {
             let symbol_type = symbol.ty.clone();
-            let issue = if symbol.is_final && symbol.initialized {
+            let issue = if symbol.is_const {
+                Some((span.clone(), format!("Cannot assign to constant '{name}'")))
+            } else if symbol.is_final && symbol.initialized {
                 Some((
                     span.clone(),
                     format!("Cannot assign to final variable '{name}'"),
@@ -589,6 +645,7 @@ impl Analyzer {
             "string" => Type::String,
             "error" => Type::Error,
             "nil" => Type::Nil,
+            "const" => Type::Unknown("const".to_string()),
             other => {
                 self.report(span, format!("Unknown type '{other}'"));
                 Type::Unknown(other.to_string())

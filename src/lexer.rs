@@ -27,6 +27,7 @@ pub enum Token {
     Float,
     True,
     False,
+    Const,
 
     // Operators
     Plus,
@@ -240,6 +241,7 @@ impl<'input> Lexer<'input> {
             "float" => Token::Float,
             "true" => Token::True,
             "false" => Token::False,
+            "const" => Token::Const,
             _ => Token::Identifier(text.to_string()),
         }
     }
