@@ -5,7 +5,7 @@
 ##
 
 > [!CAUTION]
-> This program is still in **early-development** and some critical components are not yet fully implemented.
+> This is implementing and intended for **Research Purposes** and **SHOULD NOT BE USED ON PRODUCTION ENVIRONMENTS**. The goal is to determine the feasibility, performance and developer experience of Rust Programming Language for implementing static code analyzers for Ballerina Language.
 
 ## Documentation
 
