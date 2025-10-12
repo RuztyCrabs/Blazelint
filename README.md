@@ -1,6 +1,6 @@
 ###### *<div align="right"><sub>// by RuztyCrabs</sub></div>*
 
-<img src="https://raw.githubusercontent.com/RuztyCrabs/Blazelint/refs/heads/main/docs/assets/Blazelint-banner.webp" alt="BlazeLint banner" style="width: 2000px; height: auto;">
+<img src="https://raw.githubusercontent.com/RuztyCrabs/Blazelint/refs/heads/main/docs/assets/blazelint-banner-2.webp" alt="BlazeLint banner" style="width: 2000px; height: auto;">
 
 ##
 
