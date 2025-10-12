@@ -1,11 +1,6 @@
-<div align="center">
+###### *<div align="right"><sub>// by RuztyCrabs</sub></div>*
 
-<img src=".github/assets/blazelint_logo.webp" alt="BlazeLint logo" style="width: 90px; height: auto;">
-
-# BlazeLint
- -- An efficient linter for Ballerina Lang --
-
-</div>
+<img src="docs/assets/Blazelint-banner.webp" alt="BlazeLint banner" style="width: 2000px; height: auto;">
 
 ##
 
@@ -16,6 +11,7 @@
 
 *   [BNF Grammar for Ballerina Subset](docs/BNF.md)
 *   [Software Requirement Specification (Available through releases)]()
+*   [Pipeline overview](docs/pipeline_overview.md)
 
 ## Building
 
@@ -45,6 +41,23 @@ cargo build --release
 ```
 > [!NOTE]
 > Cargo build will download any required dependancies automatically but you can explicitly get them using `cargo fetch` if still complains about missing libraries.
+
+## Debugging
+
+### Prerequsites
+
+- Build requirements stated [here](#building).
+- VsCode IDE
+- [Rust Analyzer extension by rust-lang.org](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- [CodeLLDB extension by Vadim Chugunov](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
+
+### Steps
+- You can adjust the `tests/test.bal` file if you need to debug a specific diagnostic.
+- Set breakpoints as needed.
+- Click on **Run and Debug** from the main method or use `ctrl+shift+D` to jump to debug menu.
+
+> [!NOTE]
+> It is possible to debug with any IDE including Neovim, Emacs and etc but we recommend vscode for easier setup. 
 
 ## Contributing
 

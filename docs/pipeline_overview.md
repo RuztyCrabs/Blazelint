@@ -1,33 +1,38 @@
 # Blazelint Pipeline Overview
 
-This document describes how the current implementation of Blazelint turns raw Ballerina source code into tokens, builds an Abstract Syntax Tree (AST), and surfaces diagnostics. Diagrams are rendered with Mermaid to make each stage easier to grasp.
-
-## 👀 High-Level Data Flow
+## High-Level Data Flow
 
 ```mermaid
-flowchart LR
+flowchart TD
     Source["Source File\nmain.rs"] --> Lex["Tokenisation\nlexer::Lexer"]
     Lex -->|token triples| TokenStream["Vec of (start, token, end) tuples"]
     TokenStream --> Parse["Parsing\nparser::Parser"]
     Parse -->|AST statements| Ast["AST\nast::Stmt list"]
+    Ast --> Sem["Semantic Analysis\nsemantic::analyze"]
+    Sem -->|validated AST| Ready["Analysis complete"]
 
     Lex -. Err(LexError) .-> LexDiag[Lexical Diagnostic]
     Parse -. Err(ParseError) .-> ParseDiag[Parse Diagnostic]
+    Sem -. Err(Semantic) .-> SemDiag[Semantic Diagnostic]
 
-    LexDiag & ParseDiag --> Collect["Vec of diagnostics"]
+    LexDiag --> Collect["Vec of diagnostics"]
+    ParseDiag --> Collect
+    SemDiag --> Collect
     Collect --> Render["Formatted output\nprint_diagnostics"]
 ```
 
 * `main.rs` coordinates the run: it loads the file, launches the lexer, hands the resulting tokens to the parser, and prints either the AST or any collected diagnostics.
+* Once parsing succeeds, `semantic::analyze` walks the AST to enforce scope, type, and control-flow rules before printing the tree.
 * Every stage is fallible. Errors stay rich with byte spans so the front-end can offer precise highlights.
 
-## 🔁 Runtime Interaction
+## Runtime Interaction
 
 ```mermaid
 sequenceDiagram
     participant CLI as main.rs
     participant Lex as lexer::Lexer
     participant Parse as parser::Parser
+    participant Sem as semantic::Analyzer
     participant Diag as errors::Diagnostic
 
     CLI->>Lex: Lexer::new(&input)
@@ -45,7 +50,16 @@ sequenceDiagram
         Parse-->>CLI: parse()
         alt Parsing succeeds
             Parse-->>CLI: Ok(AST)
-            CLI->>CLI: print pretty AST
+            CLI->>Sem: analyze(&AST)
+            alt Analysis succeeds
+                Sem-->>CLI: Ok(())
+                CLI->>CLI: print pretty AST
+            else Semantic error(s)
+                Sem-->>CLI: Err(diagnostics)
+                CLI->>Diag: diagnostics
+                CLI->>CLI: print_diagnostics(...)
+                CLI-->>CLI: exit(1)
+            end
         else Syntax error
             Parse-->>CLI: Err(ParseError)
             CLI->>Diag: Diagnostic::from(ParseError)
@@ -56,8 +70,9 @@ sequenceDiagram
 ```
 
 The CLI intentionally clones the token list: one copy feeds the parser, the other is printed to help users debug lexer output.
+The semantic analyzer only runs after the AST is produced successfully; if it finds mismatched types, undefined variables, or invalid returns, it emits diagnostics tagged as `DiagnosticKind::Semantic`.
 
-## 🧱 Structural Overview
+## Structural Overview
 
 ```mermaid
 classDiagram
@@ -85,6 +100,30 @@ classDiagram
         +parse()
         -tokens
         -current
+    }
+
+    class Analyzer {
+        +analyze()
+        -scopes
+        -diagnostics
+        -current_function
+    }
+
+    class Type {
+        Int
+        Float
+        Boolean
+        String
+        Error
+        Nil
+        Unknown
+    }
+
+    class Symbol {
+        ty
+        is_final
+        initialized
+        declared_span
     }
 
     class Stmt {
@@ -118,18 +157,23 @@ classDiagram
     Parser --> Token
     Parser --> Stmt
     Stmt --> Expr
+    Analyzer --> Stmt
+    Analyzer --> Expr
+    Analyzer --> Type
+    Analyzer --> Symbol
     Diagnostic <.. LexError
     Diagnostic <.. ParseError
+    Diagnostic <.. Analyzer
 ```
 
-## 🧭 Module-by-Module Tour
+## More details on modules
 
 ### `main.rs`
 * Reads file paths from the CLI and loads the source into memory.
 * Builds `line_starts` so byte spans can be mapped back to `(line, column)` pairs.
 * Runs the lexer as an iterator, gathering either tokens or `LexError`s. All errors are converted into `Diagnostic` values immediately.
 * Emits tokens for debugging before invoking the parser.
-* Creates a `Parser`, calls `parse()`, and prints the resulting `Vec<Stmt>` using Rust’s pretty debug formatter.
+* Creates a `Parser`, calls `parse()`, then invokes `semantic::analyze` before printing the resulting `Vec<Stmt>` using Rust’s pretty debug formatter.
 * On any diagnostic, calls `print_diagnostics`, which:
   * Maps byte spans to line/column positions.
   * Prints the offending line (with a caret underline built by `build_highlight_line`).
@@ -144,74 +188,6 @@ classDiagram
   4. Emits `LexError` for malformed constructs (e.g., stray `&`, unterminated strings, malformed exponents).
 * Keyword recognition happens in `identifier()`, which upgrades raw identifiers to reserved tokens (`Token::Function`, `Token::Return`, etc.).
 
-#### Lexer function-by-function walkthrough
-
-```mermaid
-flowchart TD
-    A[Lexer::new] --> B[Iterator::next]
-    B --> C[skip_whitespace_and_comments]
-    C --> D{terminator?}
-    D -- yes --> Done[Return None]
-    D -- no --> E[advance]
-    E --> F{character class}
-    F -->|quote| G[string]
-    F -->|digit| H[number]
-    F -->|alpha/_| I[identifier]
-    F -->|operator| J[create_token]
-    F -->|unexpected| K[LexError]
-    G & H & I --> L[create_token]
-    L --> M[Ok((start, token, end))]
-    K --> N[Err(LexError)]
-    M & N --> B
-```
-
-| Function | Role | Return type | Notes |
-| --- | --- | --- | --- |
-| `Lexer::new(input)` | Seeds the scanner with an `&str`, a `Peekable<Chars>` iterator, and zeroed offsets. | `Lexer<'_>` | Keeps a **borrow** to avoid copying the input. |
-| `Iterator::next()` | Orchestrates one scanning step and yields the next token triple or error. | `Option<Result<(usize, Token, usize), LexError>>` | `None` marks EOF; `Some(Ok(...))` carries a token; `Some(Err(...))` surfaces a lexing failure. |
-| `skip_whitespace_and_comments()` | Consumes spaces, newlines, and comments before scanning a token. | `Result<(), LexError>` | Returns `Ok(())` when skipping succeeds, or `Err` when it hits an unterminated block comment. |
-| `create_token(token_type)` | Packages the current lexeme as `(start, token, end)`. | `(usize, Token, usize)` | Uses the `start` and `current` offsets maintained by the lexer. |
-| `string()` | Reads characters until the closing quote, handling escape sequences. | `Result<Token, LexError>` | Returns `Token::StringLiteral` or an error like “Unterminated string literal.” |
-| `number()` | Parses integer/float/exponent forms. | `Result<Token, LexError>` | Relies on `advance()` / `peek()` and reports malformed exponents. |
-| `identifier()` | Collects alphanumeric/underscore sequences and upgrades keywords. | `Token` | Returns either a keyword variant (`Token::Return`) or `Token::Identifier(name)`. |
-| `advance()` | Pops the next `char` from the iterator and increments `current`. | `Option<char>` | This is the only place the real iterator is consumed. |
-| `peek()` | Looks at the next character without consuming it. | `Option<&char>` | Wraps `Peekable::peek()`. |
-| `peek_next()` | Looks two characters ahead. | `Option<char>` | Clones the iterator, calls `.next()` twice on the clone, leaving the original untouched. |
-| `match_char(expected)` | Consumes the next character only if it matches `expected`. | `bool` | Enables two-character operators like `!=` and `<=`. |
-| `is_at_end()` | Tests whether there are any more characters. | `bool` | Simply checks if `peek()` returned `None`. |
-
-##### Understanding the `Result`/`Option` layering
-
-* `skip_whitespace_and_comments` returns `Result<(), LexError>` because skipping can fail (unterminated block comment). Returning `Ok(())` means “skip succeeded, keep scanning in `next()`.”
-* The iterator itself yields `Option<Result<...>>`. The outer `Option` is standard Rust iterator semantics (`None` == EOF). The inner `Result` either wraps a successfully created token triple (`Ok`) or a `LexError` (`Err`).
-* When a helper like `string()` or `number()` encounters malformed input, it returns `Err(LexError)`; `Iterator::next()` immediately wraps that in `Some(Err(...))` so callers see the failure and can surface a diagnostic without panicking.
-
-```mermaid
-sequenceDiagram
-    participant Next as Iterator::next
-    participant Skip as skip_whitespace_and_comments
-    participant Scan as concrete scanner (string/number/...)
-    participant Tok as create_token
-
-    Next->>Skip: skip_whitespace_and_comments()
-    alt skip fails
-        Skip-->>Next: Err(LexError)
-        Next-->>Caller: Some(Err(LexError))
-    else skip ok
-        Skip-->>Next: Ok(())
-        Next->>Next: update start = current
-        Next->>Scan: dispatch on character
-        alt Scan error
-            Scan-->>Next: Err(LexError)
-            Next-->>Caller: Some(Err(LexError))
-        else Scan ok
-            Scan-->>Next: Token variant
-            Next->>Tok: create_token(token)
-            Tok-->>Next: (start, token, end)
-            Next-->>Caller: Some(Ok((start, token, end)))
-        end
-    end
-```
 
 ### `parser.rs`
 * `Parser` stores the token triplets and a cursor index.
@@ -231,10 +207,17 @@ sequenceDiagram
 ### `errors.rs`
 * Provides shared diagnostic types.
 * `LexError` and `ParseError` carry messages plus the byte `Span` that triggered them (and optional expectation hints for the parser).
-* `DiagnosticKind` distinguishes lexical vs. syntactic issues.
-* `Diagnostic::from(LexError)` and `Diagnostic::from(ParseError)` adapt stage-specific errors into the uniform reporting surface that `main.rs` prints.
+* `DiagnosticKind` distinguishes lexical, syntactic, and semantic issues so downstream tooling can attribute failures accurately.
+* `Diagnostic::from(LexError)` and `Diagnostic::from(ParseError)` adapt stage-specific errors into the uniform reporting surface that `main.rs` prints. Semantic analysis constructs diagnostics directly using the same helpers.
 
-## 🧪 Diagnostics Rendering Details
+### `semantic.rs`
+* `analyze(&[Stmt])` is the public entry point invoked by `main.rs` after parsing succeeds.
+* Maintains a stack of lexical scopes that map identifiers to `Symbol` records (type, mutability, initialisation state, and declaration span).
+* Enforces typing rules for expressions (`check_expr`) and statements (`check_stmt`), ensuring assignments respect declared types, booleans guard branch conditions, and `return`/`panic` semantics align with function signatures.
+* Tracks declared functions so mutual recursion checks can be added later, and records whether final variables are initialised exactly once.
+* Emits semantic diagnostics with precise spans whenever scope or type rules are violated, allowing the CLI to surface them alongside lexer/parser errors.
+
+## Diagnostics Rendering Details
 
 ```mermaid
 graph TD
@@ -251,7 +234,7 @@ graph TD
 * `byte_to_line_col` walks that table to convert byte ranges into human-friendly coordinates.
 * `line_text` and `build_highlight_line` extract the offending line and draw the caret marker, matching the behavior that the integration tests assert.
 
-## 🧭 Line & Column Tracking Internals
+## Line & Column Tracking Internals
 
 Blazelint keeps byte-based spans internally and converts them to human-friendly line/column locations only when printing diagnostics. The following helpers collaborate to make that happen:
 
@@ -283,32 +266,3 @@ flowchart LR
         style D fill:#fdf6e3,stroke:#b58900
         style F fill:#fdf6e3,stroke:#b58900
 ```
-
-```mermaid
-sequenceDiagram
-        participant Span as Diagnostic.span
-        participant Offsets as line_starts
-        participant Col as byte_to_line_col
-        participant Text as line_text
-        participant Highlight as build_highlight_line
-        participant Printer as print_diagnostics
-
-        Span->>Offsets: request line bounds
-        Offsets-->>Col: provide enclosing window
-        Col-->>Printer: (line, column)
-        Printer->>Text: fetch full line
-        Text-->>Printer: line contents
-        Printer->>Highlight: build caret underline
-        Highlight-->>Printer: caret string
-        Printer-->>Printer: emit formatted diagnostic
-```
-
-Together these helpers ensure byte spans coming from the lexer and parser map to precise editor-style locations, even for tricky edge cases like empty spans at EOF or multi-line selections. The sentinel entry from `compute_line_starts` is critical: it acts as a safe "ceiling" so `byte_to_line_col` can clamp indices without panicking and `line_text` can always slice within bounds.
-
-## 🚀 Where to Go Next
-
-* **AST Snapshot Tests** – extend the CLI integration suite to assert on printed AST fragments, ensuring the parser produces the expected structures.
-* **Parser Unit Tests** – exercise individual parsing entry points (`var_decl`, `function`, etc.) by instantiating the parser with hand-crafted token streams.
-* **Clippy & fmt Enforcement** – wire `cargo fmt` / `cargo clippy` into CI so the code and documentation stay consistent as the linter grows.
-
-With these notes and diagrams you should now have a clear picture of how Blazelint digests source code and surfaces actionable feedback.
