@@ -1,6 +1,6 @@
 [package]
 name = "blazelint"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Chamal Randika Mallawaarachchi, Rukshan Ranasinghe, Subhoda Pathum"]
 description = "A code linter for Ballerina programming language"
