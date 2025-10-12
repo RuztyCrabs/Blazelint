@@ -11,9 +11,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        uses: actions/checkout@v5
 
       - name: Install Typst
         uses: typst-community/setup-typst@v4
@@ -21,7 +19,7 @@ jobs:
           typst-version: latest
 
       - name: Compile Software Requirements Specification
-        run: typst compile docs/software_requirements_analysis.typ docs/software_requirements_analysis.pdf
+        run: typst compile docs/SRS.typ docs/software_requirements_analysis.pdf
 
       - name: Upload SRS PDF to release
         uses: softprops/action-gh-release@v2
