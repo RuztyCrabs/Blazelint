@@ -22,12 +22,27 @@ jobs:
       - name: Install toml-cli
         run: cargo install toml-cli
 
+      - name: Install Typst
+        uses: typst-community/setup-typst@v4
+        with:
+          typst-version: latest
+
       - name: Verify tag matches Cargo.toml version
         if: startsWith(github.ref, 'refs/tags/')
         run: test "v$(toml get Cargo.toml package.version --raw)" = "${{ github.ref_name }}"
 
       - name: Build release binary
-        run: cargo build --release --locked
+        run: cargo build --release
+
+      - name: Package release binary
+        run: |
+          install -d dist
+          cp target/release/blazelint dist/blazelint
+          tar -C dist -czf dist/blazelint-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz blazelint
+          rm dist/blazelint
+
+      - name: Compile SRS PDF
+        run: typst compile docs/SRS.typ docs/software_requirements_analysis.pdf
 
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/')
@@ -36,8 +51,10 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: BlazeLint ${{ github.ref_name }}
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
-            target/release/blazelint#blazelint-${{ github.ref_name }}-x86_64-unknown-linux-gnu
+            dist/blazelint-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz
+            docs/software_requirements_analysis.pdf#BlazeLint-SRS-${{ github.ref_name }}.pdf
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

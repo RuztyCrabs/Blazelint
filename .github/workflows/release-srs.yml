@@ -4,9 +4,7 @@ permissions:
   contents: write
 
 on:
-  release:
-    types: [published]
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 jobs:
   build:
@@ -24,10 +22,8 @@ jobs:
       - name: Compile Software Requirements Specification
         run: typst compile docs/SRS.typ docs/software_requirements_analysis.pdf
 
-      - name: Upload SRS PDF to release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
+      - name: Upload SRS PDF artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: docs/software_requirements_analysis.pdf
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: software-requirements-analysis
+          path: docs/software_requirements_analysis.pdf
