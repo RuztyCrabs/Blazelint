@@ -8,16 +8,11 @@ if ! sudo apt-get install -y openjdk-21-jre; then
   sudo apt-get install -y openjdk-17-jre
 fi
 
-if ! cargo install --list | grep -q "typst-cli"; then
-  echo "Installing Typst via cargo..."
-  cargo install --locked typst-cli
-else
-  echo "Typst already installed via cargo; skipping."
-fi
-
 if ! command -v typst >/dev/null 2>&1; then
-  echo "Linking typst binary into /usr/local/bin"
-  sudo ln -sf "${CARGO_HOME:-$HOME/.cargo}/bin/typst" /usr/local/bin/typst
+  echo "Installing Typst binary..."
+  wget -qO typst.tar.xz https://github.com/typst/typst/releases/latest/download/typst-x86_64-unknown-linux-musl.tar.xz
+  sudo tar xf typst.tar.xz --strip-components=1 -C /usr/local/bin typst-x86_64-unknown-linux-musl/typst
+  rm -f typst.tar.xz
 fi
 
 BALLERINA_VERSION="2201.12.10"
