@@ -16,3 +16,4 @@ string message = "Hello, Ballerina!";
 boolean isDone = true;
 float myFloat = 0.005e+2;
 int another_ident_123 = 456;
+const api_key = "my-secret-key";

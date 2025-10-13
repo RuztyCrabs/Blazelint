@@ -19,4 +19,5 @@ float myFloat = 0.005e+2;
 const MAXSIZE = 1000;
 //MAXSIZE = 2000;
 const maxSize = 1000;
+// const MAX_SIZE = 1000;
 

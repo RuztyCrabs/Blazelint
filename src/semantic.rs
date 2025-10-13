@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 
 /// Internal representation of the types the analyzer understands.
 #[derive(Debug, Clone, PartialEq)]
-enum Type {
+pub enum Type {
     Int,
     Float,
     Boolean,
@@ -42,12 +42,12 @@ impl Type {
 
 /// Tracked metadata for a symbol bound in the current scope stack.
 #[derive(Clone)]
-struct Symbol {
-    ty: Type,
-    is_final: bool,
-    is_const: bool,
-    initialized: bool,
-    declared_span: Span,
+pub struct Symbol {
+    pub ty: Type,
+    pub is_final: bool,
+    pub is_const: bool,
+    pub initialized: bool,
+    pub declared_span: Span,
 }
 
 /// Context for the function currently being analyzed.
