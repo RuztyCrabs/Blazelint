@@ -26,7 +26,7 @@ cargo install blazelint
 
 Prefer a prebuilt executable? Download the Linux x86_64 binary from the [latest GitHub release](https://github.com/RuztyCrabs/Blazelint/releases/latest) and place it in your `$PATH`.
 
-Windows and MacOS builds will be added in next release.
+Windows and MacOS binaries will be added in next release.
 
 ## Usage
 
@@ -36,13 +36,16 @@ Analyze a Ballerina source file by passing its path to `blazelint`:
 blazelint path/to/file.bal
 ```
 
-The tool prints the input program, a token stream, the parsed AST, and exits with a non-zero status if diagnostics are emitted.
+The tool prints the input program, a token stream, the parsed AST, and exits with a non-zero status or emits diagnostics if any detected.
 
 Running from a checked-out repository is also supported:
 
 ```bash
 cargo run -- path/to/file.bal
 ```
+
+> [!NOTE]
+> `cargo run` builds and executes an unoptimized build (for debug requirments). Always use `cargo build --release` for any benchmark or observations on performance.
 
 For a quick smoke test, you can reuse the sample program in `tests/test.bal`:
 
