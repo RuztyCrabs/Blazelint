@@ -5,6 +5,9 @@ edition = "2021"
 authors = ["Chamal Randika Mallawaarachchi, Rukshan Ranasinghe, Subhoda Pathum"]
 description = "A code linter for Ballerina programming language"
 license = "MIT"
+repository = "https://github.com/RuztyCrabs/Blazelint"
+homepage = "https://github.com/RuztyCrabs/Blazelint"
+documentation = "https://github.com/RuztyCrabs/Blazelint#readme"
 
 [dev-dependencies]
 assert_cmd = "2.0"
