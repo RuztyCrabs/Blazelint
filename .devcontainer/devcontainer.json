@@ -1,6 +1,6 @@
 {
   "name": "BlazeLint DevContainer",
-  "image": "mcr.microsoft.com/devcontainers/rust:1-86-bullseye",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/common-utils:2": {
@@ -17,7 +17,8 @@
         "vadimcn.vscode-lldb",
         "tamasfe.even-better-toml",
         "nico-castell.linux-desktop-file",
-        "nvarner.typst-lsp"
+  "nvarner.typst-lsp",
+  "WSO2.ballerina"
       ],
       "settings": {
         "editor.formatOnSave": true,

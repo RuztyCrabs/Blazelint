@@ -55,7 +55,7 @@ blazelint tests/test.bal
 
 ## Development environment
 
-We ship a ready-to-use [Dev Container](https://containers.dev/) so contributors can build and test BlazeLint without installing Rust, Typst, or CLI tooling locally.
+We ship a ready-to-use [Dev Container](https://containers.dev/) so you can hack on BlazeLint without installing Rust, Typst, or the Ballerina toolchain locally.
 
 ### Visual Studio Code
 
@@ -63,15 +63,21 @@ We ship a ready-to-use [Dev Container](https://containers.dev/) so contributors 
 2. Clone this repository and open it in VS Code.
 3. Run the **Dev Containers: Reopen in Container** command.
 
-The container comes preloaded with the stable Rust toolchain, `toml-cli`, Typst, and a warmed cargo cache.
+The container comes with:
+
+- Stable Rust and the full cargo toolchain
+- Typst CLI for building the SRS
+- Ballerina runtime (`bal`) plus the official VS Code extension (preconfigured inside the container)
+- Common utilities (zsh, GitHub CLI, etc.)
 
 ### GitHub Codespaces
 
-Prefer a fully hosted setup?
+Prefer a fully hosted browser environment?
 
-1. Click the **Code** dropdown on GitHub and choose **Create codespace on main** (or your fork/branch).
-2. Wait for the Codespace to start; it automatically uses this repo's devcontainer definition.
-3. Open a terminal inside the Codespace and run project commands as usual (for example `cargo test` or `typst compile docs/SRS.typ`).
+1. Click **Code → Create codespace** from the GitHub UI.
+2. Wait for the Codespace to provision; it automatically uses this devcontainer definition.
+3. Open the integrated terminal and run project commands like `cargo test`, `bal version`, or `typst compile docs/SRS.typ`.
+
 ## Building
 
 ### Prerequsites
