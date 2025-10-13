@@ -10,12 +10,12 @@
 ## Documentation
 
 *   [BNF Grammar for Ballerina Subset](docs/BNF.md)
-* [Software Requirement Specification (SRS)](https://github.com/Chamal1120/Blazelint/releases/latest/download/software_requirements_analysis.pdf)
+* [Software Requirement Specification (SRS)](https://github.com/RuztyCrabs/Blazelint/releases/latest/download/BlazeLint-SRS.pdf)
 *   [Pipeline overview](docs/pipeline_overview.md)
 
 ## Installation
 
-Install the latest published version from crates.io:
+Install the latest published version from [crates.io](https://crates.io/crates/blazelint):
 
 ```bash
 cargo install blazelint
@@ -26,12 +26,36 @@ cargo install blazelint
 
 Prefer a prebuilt executable? Download the Linux x86_64 binary from the [latest GitHub release](https://github.com/RuztyCrabs/Blazelint/releases/latest) and place it in your `$PATH`.
 
+Windows and MacOS builds will be added in next release.
+
+## Usage
+
+Analyze a Ballerina source file by passing its path to `blazelint`:
+
+```bash
+blazelint path/to/file.bal
+```
+
+The tool prints the input program, a token stream, the parsed AST, and exits with a non-zero status if diagnostics are emitted.
+
+Running from a checked-out repository is also supported:
+
+```bash
+cargo run -- path/to/file.bal
+```
+
+For a quick smoke test, you can reuse the sample program in `tests/test.bal`:
+
+```bash
+blazelint tests/test.bal
+```
+
 ## Building
 
 ### Prerequsites
 
 - Git 2.51.0 or newer
-- Rust Toolchain 1.86.0 or newer
+- Rust Toolchain 1.86.0 or newer [(Get it here)](https://rust-lang.org/tools/install/)
 
 ### Steps
 
@@ -60,7 +84,7 @@ cargo build --release
 ### Prerequsites
 
 - Build requirements stated [here](#building).
-- VsCode IDE
+- [VsCode IDE by Microsoft](https://code.visualstudio.com/download)
 - [Rust Analyzer extension by rust-lang.org](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
 - [CodeLLDB extension by Vadim Chugunov](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
 
