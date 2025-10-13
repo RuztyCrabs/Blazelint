@@ -7,6 +7,24 @@
 > [!CAUTION]
 > This is implementing and intended for **Research Purposes** and **SHOULD NOT BE USED ON PRODUCTION ENVIRONMENTS**. The goal is to determine the feasibility, performance and developer experience of Rust Programming Language for implementing static code analyzers for Ballerina Language.
 
+## Table of Contents
+
+- [Documentation](#documentation)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Development environment](#development-environment)
+	- [Using GitHub Codespaces](#using-github-codespaces)
+	- [Using VS Code (if you have it installed locally)](#using-vs-code-if-you-have-it-installed-locally)
+- [Building](#building)
+	- [Prerequsites (skip if using the dev container)](#prerequsites-skip-if-using-the-dev-container)
+	- [Steps](#steps)
+- [Debugging](#debugging)
+	- [Prerequsites (skip if using the dev container)](#prerequsites-skip-if-using-the-dev-container-1)
+	- [Steps](#steps-1)
+- [Contributing](#contributing)
+- [TODO](#todo)
+- [License](#license)
+
 ## Documentation
 
 *   [BNF Grammar for Ballerina Subset](docs/BNF.md)
@@ -26,7 +44,7 @@ cargo install blazelint
 
 Prefer a prebuilt executable? Download the Linux x86_64 binary from the [latest GitHub release](https://github.com/RuztyCrabs/Blazelint/releases/latest) and place it in your `$PATH`.
 
-Windows and MacOS builds will be added in next release.
+Windows and MacOS binaries will be added in next release.
 
 ## Usage
 
@@ -36,7 +54,10 @@ Analyze a Ballerina source file by passing its path to `blazelint`:
 blazelint path/to/file.bal
 ```
 
-The tool prints the input program, a token stream, the parsed AST, and exits with a non-zero status if diagnostics are emitted.
+> [!NOTE]
+> Use the limited subset document in the [BNF](docs/BNF.md) when defining Ballerina syntax to be linted.
+
+The tool prints the input program, a token stream, the parsed AST, and exits with a non-zero status or emits diagnostics if it detected any.
 
 Running from a checked-out repository is also supported:
 
@@ -44,15 +65,46 @@ Running from a checked-out repository is also supported:
 cargo run -- path/to/file.bal
 ```
 
+> [!NOTE]
+> `cargo run` builds and executes an unoptimized build (for debug requirments). Always use `cargo build --release` for any benchmark or observations on performance.
+
 For a quick smoke test, you can reuse the sample program in `tests/test.bal`:
 
 ```bash
 blazelint tests/test.bal
 ```
 
+## Development environment
+
+We ship a ready-to-use [Dev Container](https://containers.dev/) so you can jump on to developing BlazeLint without installing anything locally.
+
+### Using GitHub Codespaces
+
+Dev Container can be launched and used fully remotely inside a browser using GitHub codespaces:
+
+1. Click **Code → Create codespace** from the GitHub UI.
+2. Wait for the Codespace to provision (first run will take some significant time).
+3. Start Developing.
+
+### Using VS Code (if you have it installed locally)
+
+1. Install the **Dev Containers** extension.
+2. Clone this repository and open it in VS Code.
+3. Run the **Dev Containers: Reopen in Container** command.
+4. Wait till the container spins up.
+5. Start Developing.
+
+The container comes with:
+
+- Rust toolchain
+- Typst CLI for building the SRS
+- Ballerina runtime
+- Extensions for Language Servers, syntax highlighting and debugging support
+- Common utilities (zsh, GitHub CLI, git, etc.)
+ 
 ## Building
 
-### Prerequsites
+### Prerequsites (skip if using the dev container)
 
 - Git 2.51.0 or newer
 - Rust Toolchain 1.86.0 or newer [(Get it here)](https://rust-lang.org/tools/install/)
@@ -77,11 +129,11 @@ cd Blazelint
 cargo build --release
 ```
 > [!NOTE]
-> Cargo build will download any required dependancies automatically but you can explicitly get them using `cargo fetch` if still complains about missing libraries.
+> Cargo build will download any required dependancies automatically but you can explicitly get them using `cargo fetch` if it still complains about missing libraries.
 
 ## Debugging
 
-### Prerequsites
+### Prerequsites (skip if using the dev container)
 
 - Build requirements stated [here](#building).
 - [VsCode IDE by Microsoft](https://code.visualstudio.com/download)
@@ -104,7 +156,7 @@ Run all formatter, lint, and test checks locally before opening a pull request:
 bash scripts/check.sh
 ```
 > [!NOTE]
-> Cargo will download dev dependancies automatically but you can explicitly get them using `cargo fetch` if still complains about missing libraries.
+> Cargo will download dev dependancies automatically but you can explicitly get them using `cargo fetch` if it still complains about missing libraries.
 
 ## TODO
 
