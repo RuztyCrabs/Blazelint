@@ -17,13 +17,14 @@
         "vadimcn.vscode-lldb",
         "tamasfe.even-better-toml",
         "nico-castell.linux-desktop-file",
-  "nvarner.typst-lsp",
-  "WSO2.ballerina"
+        "nvarner.typst-lsp",
+        "WSO2.ballerina"
       ],
       "settings": {
         "editor.formatOnSave": true,
         "rust-analyzer.check.command": "clippy",
-        "files.trimTrailingWhitespace": true
+        "files.trimTrailingWhitespace": true,
+        "github.copilot.terminal.enable": false
       }
     }
   },
