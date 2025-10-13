@@ -1,0 +1,30 @@
+{
+  "name": "BlazeLint DevContainer",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-86-bullseye",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": "true",
+      "username": "vscode",
+      "upgradePackages": "true"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "vadimcn.vscode-lldb",
+        "tamasfe.even-better-toml",
+        "nico-castell.linux-desktop-file",
+        "nvarner.typst-lsp"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "rust-analyzer.check.command": "clippy",
+        "files.trimTrailingWhitespace": true
+      }
+    }
+  },
+  "remoteUser": "vscode"
+}

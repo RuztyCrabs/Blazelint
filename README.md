@@ -53,6 +53,25 @@ For a quick smoke test, you can reuse the sample program in `tests/test.bal`:
 blazelint tests/test.bal
 ```
 
+## Development environment
+
+We ship a ready-to-use [Dev Container](https://containers.dev/) so contributors can build and test BlazeLint without installing Rust, Typst, or CLI tooling locally.
+
+### Visual Studio Code
+
+1. Install the **Dev Containers** extension.
+2. Clone this repository and open it in VS Code.
+3. Run the **Dev Containers: Reopen in Container** command.
+
+The container comes preloaded with the stable Rust toolchain, `toml-cli`, Typst, and a warmed cargo cache.
+
+### GitHub Codespaces
+
+Prefer a fully hosted setup?
+
+1. Click the **Code** dropdown on GitHub and choose **Create codespace on main** (or your fork/branch).
+2. Wait for the Codespace to start; it automatically uses this repo's devcontainer definition.
+3. Open a terminal inside the Codespace and run project commands as usual (for example `cargo test` or `typst compile docs/SRS.typ`).
 ## Building
 
 ### Prerequsites
