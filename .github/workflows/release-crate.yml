@@ -56,7 +56,7 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             dist/blazelint-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz
-            dist/BlazeLint-SRS.pdf#BlazeLint-SRS-${{ github.ref_name }}.pdf
+            dist/BlazeLint-SRS.pdf
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
