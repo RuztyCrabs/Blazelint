@@ -1,5 +1,27 @@
 use crate::errors::Span;
 
+/// Represents a type descriptor in the Ballerina language.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeDescriptor {
+    Basic(String),
+    Array {
+        element_type: Box<TypeDescriptor>,
+        dimension: Option<ArrayDimension>,
+    },
+    Map {
+        value_type: Box<TypeDescriptor>,
+    },
+    Optional(Box<TypeDescriptor>),
+    Union(Vec<TypeDescriptor>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArrayDimension {
+    Fixed(usize),
+    Inferred, // for [*]
+    Open,     // for []
+}
+
 /// Represents an expression in the abstract syntax tree with precise source span information.
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -35,6 +57,54 @@ pub enum Expr {
         value: Box<Expr>,
         span: Span,
     },
+    /// Member access expression (e.g., array[0] or obj.field).
+    MemberAccess {
+        object: Box<Expr>,
+        member: Box<Expr>,
+        span: Span,
+    },
+    /// Method call expression (e.g., obj.method()).
+    MethodCall {
+        object: Box<Expr>,
+        method: String,
+        arguments: Vec<Expr>,
+        span: Span,
+    },
+    /// Array literal expression.
+    ArrayLiteral {
+        elements: Vec<Expr>,
+        span: Span,
+    },
+    /// Map literal expression.
+    MapLiteral {
+        entries: Vec<(String, Expr)>,
+        span: Span,
+    },
+    /// Ternary conditional expression (condition ? true_expr : false_expr).
+    Ternary {
+        condition: Box<Expr>,
+        true_expr: Box<Expr>,
+        false_expr: Box<Expr>,
+        span: Span,
+    },
+    /// Elvis operator (expr ?: default).
+    Elvis {
+        expr: Box<Expr>,
+        default: Box<Expr>,
+        span: Span,
+    },
+    /// Range expression (start...end).
+    Range {
+        start: Box<Expr>,
+        end: Box<Expr>,
+        span: Span,
+    },
+    /// Cast expression (<type>expr).
+    Cast {
+        type_desc: TypeDescriptor,
+        expr: Box<Expr>,
+        span: Span,
+    },
 }
 
 impl Expr {
@@ -47,7 +117,15 @@ impl Expr {
             | Expr::Variable { span, .. }
             | Expr::Grouping { span, .. }
             | Expr::Call { span, .. }
-            | Expr::Assign { span, .. } => span,
+            | Expr::Assign { span, .. }
+            | Expr::MemberAccess { span, .. }
+            | Expr::MethodCall { span, .. }
+            | Expr::ArrayLiteral { span, .. }
+            | Expr::MapLiteral { span, .. }
+            | Expr::Ternary { span, .. }
+            | Expr::Elvis { span, .. }
+            | Expr::Range { span, .. }
+            | Expr::Cast { span, .. } => span,
         }
     }
 }
@@ -62,24 +140,49 @@ pub enum Literal {
     String(String),
     /// A boolean literal (true or false).
     Boolean(bool),
+    /// Nil literal ().
+    Nil,
 }
 
 /// Represents a binary operator.
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum BinaryOp {
+    // Arithmetic
     Plus,
     Minus,
     Star,
     Slash,
+    Percent,
+    
+    // Comparison
     EqualEqual,
     NotEqual,
+    EqualEqualEqual,
+    NotEqualEqual,
     Greater,
     GreaterEqual,
     Less,
     LessEqual,
+    Is,
+    
+    // Logical
     And,
     Or,
+    
+    // Bitwise
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    
+    // Shift
+    LeftShift,
+    RightShift,
+    UnsignedRightShift,
+    
+    // Assignment
+    PlusAssign,
+    MinusAssign,
 }
 
 /// Represents a unary operator.
@@ -88,19 +191,33 @@ pub enum BinaryOp {
 pub enum UnaryOp {
     Bang,
     Minus,
+    Plus,
+    BitwiseNot,
 }
 
 /// Represents a statement in the abstract syntax tree.
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum Stmt {
+    /// Import declaration.
+    Import {
+        package_path: Vec<String>,
+        span: Span,
+    },
     /// A variable declaration statement.
     VarDecl {
         is_final: bool,
         name: String,
         name_span: Span,
-        type_annotation: Option<String>,
+        type_annotation: Option<TypeDescriptor>,
         initializer: Option<Expr>,
+        span: Span,
+    },
+    ConstDecl {
+        name: String,
+        name_span: Span,
+        type_annotation: Option<TypeDescriptor>,
+        initializer: Expr,
         span: Span,
     },
     /// An expression statement.
@@ -116,12 +233,31 @@ pub enum Stmt {
         else_branch: Option<Vec<Stmt>>,
         span: Span,
     },
+    /// A while loop statement.
+    While {
+        condition: Expr,
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    /// A foreach loop statement.
+    Foreach {
+        type_annotation: Option<TypeDescriptor>,
+        variable: String,
+        iterable: Expr,
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    /// A break statement.
+    Break { span: Span },
+    /// A continue statement.
+    Continue { span: Span },
     /// A function declaration statement.
     Function {
+        is_public: bool,
         name: String,
         name_span: Span,
-        params: Vec<(String, String)>,
-        return_type: Option<String>,
+        params: Vec<(String, TypeDescriptor)>,
+        return_type: Option<TypeDescriptor>,
         body: Vec<Stmt>,
         span: Span,
     },
@@ -132,11 +268,17 @@ impl Stmt {
     #[allow(dead_code)]
     pub fn span(&self) -> &Span {
         match self {
-            Stmt::VarDecl { span, .. }
+            Stmt::Import { span, .. }
+            | Stmt::VarDecl { span, .. }
+            | Stmt::ConstDecl { span, .. }
             | Stmt::Expression { span, .. }
             | Stmt::Return { span, .. }
             | Stmt::Panic { span, .. }
             | Stmt::If { span, .. }
+            | Stmt::While { span, .. }
+            | Stmt::Foreach { span, .. }
+            | Stmt::Break { span, .. }
+            | Stmt::Continue { span, .. }
             | Stmt::Function { span, .. } => span,
         }
     }

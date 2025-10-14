@@ -1,12 +1,19 @@
 mod ast;
 mod errors;
 mod lexer;
+mod linter;
 mod parser;
 mod semantic;
 
 use ast::Stmt;
 use errors::{Diagnostic, DiagnosticKind};
 use lexer::Lexer;
+use linter::{
+    rules::camel_case::CamelCase,
+    rules::constant_case::ConstantCase,
+    rules::line_length::LineLength, // Import the new rule
+    Rule,
+};
 use parser::Parser;
 use semantic::analyze;
 use std::env;
@@ -30,25 +37,44 @@ fn main() {
     let file_path = &args[1];
     let input_code = read_source(file_path);
 
-    print_input(&input_code);
-
     let line_starts = compute_line_starts(&input_code);
 
     let tokens = match lex_input(&input_code) {
         Ok(tokens) => tokens,
-        Err(diagnostics) => exit_with_diagnostics(&input_code, &line_starts, diagnostics),
+        Err(diagnostics) => {
+            exit_with_diagnostics(&input_code, &line_starts, diagnostics);
+            process::exit(1);
+        }
     };
 
     print_tokens(&tokens);
 
-    match parse_tokens(&tokens) {
-        Ok(ast) => {
-            if let Err(diagnostics) = analyze(&ast) {
-                exit_with_diagnostics(&input_code, &line_starts, diagnostics);
-            }
-            print_ast(&ast)
+    let (ast, parse_diagnostics) = parse_tokens(&tokens);
+    
+    // Collect all diagnostics
+    let mut all_diagnostics = Vec::new();
+    
+    // Add parser errors
+    all_diagnostics.extend(parse_diagnostics);
+    
+    // Run semantic analysis if we have any AST
+    if !ast.is_empty() {
+        if let Err(semantic_diagnostics) = analyze(&ast) {
+            all_diagnostics.extend(semantic_diagnostics);
         }
-        Err(diagnostic) => exit_with_diagnostics(&input_code, &line_starts, vec![diagnostic]),
+        
+        print_ast(&ast);
+        
+        // Run linter rules even if there are errors (to catch style issues)
+        if let Err(lint_diagnostics) = run_linter(&ast, &input_code, &line_starts) {
+            all_diagnostics.extend(lint_diagnostics);
+        }
+    }
+    
+    // Display all collected diagnostics
+    if !all_diagnostics.is_empty() {
+        exit_with_diagnostics(&input_code, &line_starts, all_diagnostics);
+        process::exit(1);
     }
 }
 
@@ -62,12 +88,6 @@ fn read_source(path: &str) -> String {
             process::exit(1);
         }
     }
-}
-
-fn print_input(source: &str) {
-    println!("--- Input Code ---");
-    println!("{}", source);
-    println!("----------------------------\n");
 }
 
 fn lex_input(input: &str) -> Result<Vec<(usize, lexer::Token, usize)>, Vec<Diagnostic>> {
@@ -88,9 +108,9 @@ fn lex_input(input: &str) -> Result<Vec<(usize, lexer::Token, usize)>, Vec<Diagn
     }
 }
 
-fn parse_tokens(tokens: &[(usize, lexer::Token, usize)]) -> Result<Vec<Stmt>, Diagnostic> {
-    let mut parser = Parser::new(tokens.to_vec());
-    parser.parse().map_err(Into::into)
+fn parse_tokens(tokens: &[(usize, lexer::Token, usize)]) -> (Vec<Stmt>, Vec<Diagnostic>) {
+    let parser = Parser::new(tokens.to_vec());
+    parser.parse()
 }
 
 fn print_tokens(tokens: &[(usize, lexer::Token, usize)]) {
@@ -109,9 +129,43 @@ fn print_ast(ast: &[Stmt]) {
     }
 }
 
-fn exit_with_diagnostics(source: &str, line_starts: &[usize], diagnostics: Vec<Diagnostic>) -> ! {
+///
+/// This function iterates through each statement in the AST and applies a predefined
+/// set of linting rules. If any rule violations are found, they are collected and
+/// printed to the console using the provided source code and line information for
+/// context.
+///
+/// # Args
+///
+/// * `ast` - A slice of `Stmt` representing the AST to be linted.
+/// * `source` - The source code string, used for displaying diagnostic messages.
+/// * `line_starts` - A slice of byte offsets, where each offset is the start of a new line.
+///   This is used to convert a diagnostic's position into a line and column number.
+fn run_linter(ast: &[Stmt], source: &str, _line_starts: &[usize]) -> Result<(), Vec<Diagnostic>> {
+    // if you add a new rule then add that same as the CamelCase
+    let rules: Vec<Box<dyn Rule>> = vec![
+        Box::new(CamelCase),
+        Box::new(ConstantCase),
+        Box::new(LineLength),
+    ];
+
+    let mut diagnostics = Vec::new();
+
+    for stmt in ast {
+        for rule in &rules {
+            diagnostics.extend(rule.validate(stmt, source));
+        }
+    }
+
+    if !diagnostics.is_empty() {
+        Err(diagnostics)
+    } else {
+        Ok(())
+    }
+}
+
+fn exit_with_diagnostics(source: &str, line_starts: &[usize], diagnostics: Vec<Diagnostic>) {
     print_diagnostics(source, line_starts, &diagnostics);
-    process::exit(1);
 }
 
 /// Computes the byte indices where each line in `source` begins, including a
@@ -200,6 +254,7 @@ fn print_diagnostics(source: &str, line_starts: &[usize], diagnostics: &[Diagnos
             DiagnosticKind::Lex => "lexer",
             DiagnosticKind::Parse => "parser",
             DiagnosticKind::Semantic => "semantic",
+            DiagnosticKind::Linter => "linter",
         };
 
         println!("{kind} error: {}", diag.message);

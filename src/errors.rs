@@ -15,6 +15,7 @@ pub enum DiagnosticKind {
     Lex,
     Parse,
     Semantic,
+    Linter,
 }
 
 /// Structured diagnostic message produced by either the lexer or parser.
