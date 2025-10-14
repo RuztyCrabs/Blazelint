@@ -161,3 +161,12 @@ fn linter_reports_line_length() {
     assert!(out.contains("linter error: Lines should not exceed 120 characters."));
     assert!(out.contains("linter error: Variable \"long_line\" is not in camelCase."));
 }
+
+#[test]
+fn linter_reports_camel_case() {
+    let code = "var a_b = 1;";
+    let output = run_cli(code);
+    assert!(!output.status.success());
+    let out = stdout(&output);
+    assert!(out.contains("linter error: Variable \"a_b\" is not in camelCase."));
+}
