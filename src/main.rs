@@ -37,8 +37,6 @@ fn main() {
     let file_path = &args[1];
     let input_code = read_source(file_path);
 
-    print_input(&input_code);
-
     let line_starts = compute_line_starts(&input_code);
 
     let tokens = match lex_input(&input_code) {
@@ -51,22 +49,32 @@ fn main() {
 
     print_tokens(&tokens);
 
-    match parse_tokens(&tokens) {
-        Ok(ast) => {
-            if let Err(diagnostics) = analyze(&ast) {
-                exit_with_diagnostics(&input_code, &line_starts, diagnostics);
-                process::exit(1);
-            }
-            print_ast(&ast);
-            if let Err(diagnostics) = run_linter(&ast, &input_code, &line_starts) {
-                exit_with_diagnostics(&input_code, &line_starts, diagnostics);
-                process::exit(1);
-            }
+    let (ast, parse_diagnostics) = parse_tokens(&tokens);
+    
+    // Collect all diagnostics
+    let mut all_diagnostics = Vec::new();
+    
+    // Add parser errors
+    all_diagnostics.extend(parse_diagnostics);
+    
+    // Run semantic analysis if we have any AST
+    if !ast.is_empty() {
+        if let Err(semantic_diagnostics) = analyze(&ast) {
+            all_diagnostics.extend(semantic_diagnostics);
         }
-        Err(diagnostic) => {
-            exit_with_diagnostics(&input_code, &line_starts, vec![diagnostic]);
-            process::exit(1);
+        
+        print_ast(&ast);
+        
+        // Run linter rules even if there are errors (to catch style issues)
+        if let Err(lint_diagnostics) = run_linter(&ast, &input_code, &line_starts) {
+            all_diagnostics.extend(lint_diagnostics);
         }
+    }
+    
+    // Display all collected diagnostics
+    if !all_diagnostics.is_empty() {
+        exit_with_diagnostics(&input_code, &line_starts, all_diagnostics);
+        process::exit(1);
     }
 }
 
@@ -80,12 +88,6 @@ fn read_source(path: &str) -> String {
             process::exit(1);
         }
     }
-}
-
-fn print_input(source: &str) {
-    println!("--- Input Code ---");
-    println!("{}", source);
-    println!("----------------------------\n");
 }
 
 fn lex_input(input: &str) -> Result<Vec<(usize, lexer::Token, usize)>, Vec<Diagnostic>> {
@@ -106,9 +108,9 @@ fn lex_input(input: &str) -> Result<Vec<(usize, lexer::Token, usize)>, Vec<Diagn
     }
 }
 
-fn parse_tokens(tokens: &[(usize, lexer::Token, usize)]) -> Result<Vec<Stmt>, Diagnostic> {
-    let mut parser = Parser::new(tokens.to_vec());
-    parser.parse().map_err(|e| e.into())
+fn parse_tokens(tokens: &[(usize, lexer::Token, usize)]) -> (Vec<Stmt>, Vec<Diagnostic>) {
+    let parser = Parser::new(tokens.to_vec());
+    parser.parse()
 }
 
 fn print_tokens(tokens: &[(usize, lexer::Token, usize)]) {

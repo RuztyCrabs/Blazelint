@@ -4,7 +4,7 @@
 //! scopes, and enforces the subset of Ballerina typing rules supported by the
 //! linter. Each visitor emits structured diagnostics tagged with source spans
 //! so the CLI can highlight offending code precisely.
-use crate::ast::{BinaryOp, Expr, Literal, Stmt, UnaryOp};
+use crate::ast::{BinaryOp, Expr, Literal, Stmt, TypeDescriptor, UnaryOp};
 use crate::errors::{Diagnostic, DiagnosticKind, Span};
 use std::collections::{HashMap, HashSet};
 
@@ -17,6 +17,8 @@ pub enum Type {
     String,
     Error,
     Nil,
+    Array(Box<Type>),
+    Map(Box<Type>),
     Unknown(String),
 }
 
@@ -30,6 +32,8 @@ impl Type {
             Type::String => "string".to_string(),
             Type::Error => "error".to_string(),
             Type::Nil => "()".to_string(),
+            Type::Array(elem) => format!("{}[]", elem.description()),
+            Type::Map(val) => format!("map<{}>", val.description()),
             Type::Unknown(name) => name.clone(),
         }
     }
@@ -61,6 +65,8 @@ pub struct Analyzer {
     diagnostics: Vec<Diagnostic>,
     current_function: Option<FunctionContext>,
     functions: HashSet<String>,
+    imports: HashSet<String>,
+    loop_depth: usize,
 }
 
 impl Analyzer {
@@ -71,6 +77,8 @@ impl Analyzer {
             diagnostics: Vec::new(),
             current_function: None,
             functions: HashSet::new(),
+            imports: HashSet::new(),
+            loop_depth: 0,
         }
     }
 
@@ -90,6 +98,11 @@ impl Analyzer {
     /// Validates a single statement node and updates scope state as needed.
     fn check_stmt(&mut self, stmt: &Stmt) {
         match stmt {
+            Stmt::Import { package_path, .. } => {
+                // Track imported module
+                let module_name = package_path.last().unwrap_or(&String::new()).clone();
+                self.imports.insert(module_name);
+            }
             Stmt::VarDecl {
                 is_final,
                 name,
@@ -279,6 +292,76 @@ impl Analyzer {
                     });
                 }
             }
+            Stmt::While { condition, body, .. } => {
+                let condition_type = self.check_expr(condition);
+                if condition_type != Type::Boolean && !condition_type.is_unknown() {
+                    self.report(
+                        condition.span().clone(),
+                        format!(
+                            "while condition must be boolean, found {}",
+                            condition_type.description()
+                        ),
+                    );
+                }
+                self.loop_depth += 1;
+                self.with_scope(|analyzer| {
+                    for stmt in body {
+                        analyzer.check_stmt(stmt);
+                    }
+                });
+                self.loop_depth -= 1;
+            }
+            Stmt::Foreach {
+                type_annotation,
+                variable,
+                iterable,
+                body,
+                span: _,
+            } => {
+                let _iterable_type = self.check_expr(iterable);
+                // TODO: Check that iterable is actually iterable
+                
+                self.loop_depth += 1;
+                self.with_scope(|analyzer| {
+                    let var_type = if let Some(type_ann) = type_annotation {
+                        analyzer.type_from_annotation(type_ann, iterable.span().clone())
+                    } else {
+                        Type::Unknown("foreach_var".to_string())
+                    };
+                    
+                    analyzer.current_scope_mut().insert(
+                        variable.clone(),
+                        Symbol {
+                            ty: var_type,
+                            is_final: true,
+                            is_const: false,
+                            initialized: true,
+                            declared_span: iterable.span().clone(),
+                        },
+                    );
+                    
+                    for stmt in body {
+                        analyzer.check_stmt(stmt);
+                    }
+                });
+                self.loop_depth -= 1;
+            }
+            Stmt::Break { span } => {
+                if self.loop_depth == 0 {
+                    self.report(
+                        span.clone(),
+                        "Break statement outside of loop".to_string(),
+                    );
+                }
+            }
+            Stmt::Continue { span } => {
+                if self.loop_depth == 0 {
+                    self.report(
+                        span.clone(),
+                        "Continue statement outside of loop".to_string(),
+                    );
+                }
+            }
             Stmt::Function {
                 name: _,
                 name_span,
@@ -341,6 +424,134 @@ impl Analyzer {
             Expr::Call {
                 callee, arguments, ..
             } => self.check_call(callee, arguments),
+            Expr::MemberAccess { object, member, .. } => {
+                let obj_type = self.check_expr(object);
+                self.check_expr(member);
+                
+                // Array/map access returns element type
+                match obj_type {
+                    Type::Array(elem_type) => *elem_type,
+                    Type::Map(val_type) => *val_type,
+                    Type::Unknown(_) => Type::Unknown("member_access".to_string()),
+                    _ => {
+                        self.report(
+                            object.span().clone(),
+                            format!("Cannot index type {}", obj_type.description()),
+                        );
+                        Type::Unknown("invalid_index".to_string())
+                    }
+                }
+            }
+            Expr::MethodCall { object, method, arguments, .. } => {
+                let obj_type = self.check_expr(object);
+                for arg in arguments {
+                    self.check_expr(arg);
+                }
+                
+                // Common method type checking
+                match (obj_type.clone(), method.as_str()) {
+                    // Array methods
+                    (Type::Array(_), "push") => Type::Nil,
+                    (Type::Array(elem_type), "pop") => *elem_type,
+                    (Type::Array(elem_type), "remove") => *elem_type,
+                    (Type::Array(_), "length") => Type::Int,
+                    
+                    // String methods
+                    (Type::String, "length") => Type::Int,
+                    (Type::String, "substring") => Type::String,
+                    (Type::String, "toUpperCase") => Type::String,
+                    (Type::String, "toLowerCase") => Type::String,
+                    
+                    // Map methods
+                    (Type::Map(val_type), "get") => *val_type,
+                    (Type::Map(_), "keys") => Type::Array(Box::new(Type::String)),
+                    (Type::Map(val_type), "values") => Type::Array(val_type),
+                    (Type::Map(_), "length") => Type::Int,
+                    
+                    _ => Type::Unknown("method_call".to_string()),
+                }
+            }
+            Expr::ArrayLiteral { elements, .. } => {
+                if elements.is_empty() {
+                    return Type::Array(Box::new(Type::Unknown("empty_array".to_string())));
+                }
+                
+                // Infer type from first element
+                let first_type = self.check_expr(&elements[0]);
+                
+                // Check all elements have compatible types
+                for elem in &elements[1..] {
+                    let elem_type = self.check_expr(elem);
+                    if !Self::can_assign(&first_type, &elem_type) && !elem_type.is_unknown() {
+                        self.report(
+                            elem.span().clone(),
+                            format!("Array elements must have compatible types, expected {}, found {}", 
+                                first_type.description(), elem_type.description()),
+                        );
+                    }
+                }
+                
+                Type::Array(Box::new(first_type))
+            }
+            Expr::MapLiteral { entries, .. } => {
+                if entries.is_empty() {
+                    return Type::Map(Box::new(Type::Unknown("empty_map".to_string())));
+                }
+                
+                // Infer type from first value
+                let first_type = self.check_expr(&entries[0].1);
+                
+                // Check all values have compatible types
+                for (_key, value) in &entries[1..] {
+                    let val_type = self.check_expr(value);
+                    if !Self::can_assign(&first_type, &val_type) && !val_type.is_unknown() {
+                        self.report(
+                            value.span().clone(),
+                            format!("Map values must have compatible types, expected {}, found {}", 
+                                first_type.description(), val_type.description()),
+                        );
+                    }
+                }
+                
+                Type::Map(Box::new(first_type))
+            }
+            Expr::Ternary { condition, true_expr, false_expr, .. } => {
+                let cond_type = self.check_expr(condition);
+                if cond_type != Type::Boolean && !cond_type.is_unknown() {
+                    self.report(
+                        condition.span().clone(),
+                        format!("Ternary condition must be boolean, found {}", cond_type.description()),
+                    );
+                }
+                let true_type = self.check_expr(true_expr);
+                let false_type = self.check_expr(false_expr);
+                // Return the type of the true branch, or unknown if they don't match
+                if Self::can_assign(&true_type, &false_type) {
+                    true_type
+                } else {
+                    Type::Unknown("ternary".to_string())
+                }
+            }
+            Expr::Elvis { expr, default, .. } => {
+                let expr_type = self.check_expr(expr);
+                let default_type = self.check_expr(default);
+                // Elvis operator returns the non-null value
+                if Self::can_assign(&expr_type, &default_type) {
+                    expr_type
+                } else {
+                    Type::Unknown("elvis".to_string())
+                }
+            }
+            Expr::Range { start, end, .. } => {
+                let _start_type = self.check_expr(start);
+                let _end_type = self.check_expr(end);
+                // TODO: Check that both are integers
+                Type::Unknown("range".to_string())
+            }
+            Expr::Cast { type_desc, expr, span } => {
+                let _expr_type = self.check_expr(expr);
+                self.type_from_annotation(type_desc, span.clone())
+            }
         }
     }
 
@@ -360,7 +571,7 @@ impl Analyzer {
                 }
                 Type::Boolean
             }
-            UnaryOp::Minus => {
+            UnaryOp::Minus | UnaryOp::Plus => {
                 if let Some(result) = self.numeric_operand(&operand_type) {
                     result
                 } else {
@@ -368,13 +579,25 @@ impl Analyzer {
                         self.report(
                             span,
                             format!(
-                                "Unary '-' expects numeric operand, found {}",
+                                "Unary '-'/'+' expects numeric operand, found {}",
                                 operand_type.description()
                             ),
                         );
                     }
                     Type::Unknown("unary".into())
                 }
+            }
+            UnaryOp::BitwiseNot => {
+                if operand_type != Type::Int && !operand_type.is_unknown() {
+                    self.report(
+                        span,
+                        format!(
+                            "Bitwise NOT expects integer operand, found {}",
+                            operand_type.description()
+                        ),
+                    );
+                }
+                Type::Int
             }
         }
     }
@@ -389,7 +612,7 @@ impl Analyzer {
         }
 
         match op {
-            BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Star => {
+            BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Star | BinaryOp::Percent => {
                 if let Some(result) = self.numeric_result(&left_type, &right_type, false) {
                     result
                 } else {
@@ -420,7 +643,7 @@ impl Analyzer {
                     Type::Unknown("binary".into())
                 }
             }
-            BinaryOp::EqualEqual | BinaryOp::NotEqual => {
+            BinaryOp::EqualEqual | BinaryOp::NotEqual | BinaryOp::EqualEqualEqual | BinaryOp::NotEqualEqual => {
                 if self.can_compare(&left_type, &right_type) {
                     Type::Boolean
                 } else {
@@ -453,6 +676,10 @@ impl Analyzer {
                     Type::Boolean
                 }
             }
+            BinaryOp::Is => {
+                // Type checking operator - always returns boolean
+                Type::Boolean
+            }
             BinaryOp::And | BinaryOp::Or => {
                 if left_type == Type::Boolean && right_type == Type::Boolean {
                     Type::Boolean
@@ -466,6 +693,44 @@ impl Analyzer {
                         ),
                     );
                     Type::Boolean
+                }
+            }
+            BinaryOp::BitwiseAnd | BinaryOp::BitwiseOr | BinaryOp::BitwiseXor => {
+                if left_type == Type::Int && right_type == Type::Int {
+                    Type::Int
+                } else {
+                    self.report(
+                        span,
+                        format!(
+                            "Bitwise operator requires integer operands, found {} and {}",
+                            left_type.description(),
+                            right_type.description()
+                        ),
+                    );
+                    Type::Int
+                }
+            }
+            BinaryOp::LeftShift | BinaryOp::RightShift | BinaryOp::UnsignedRightShift => {
+                if left_type == Type::Int && right_type == Type::Int {
+                    Type::Int
+                } else {
+                    self.report(
+                        span,
+                        format!(
+                            "Shift operator requires integer operands, found {} and {}",
+                            left_type.description(),
+                            right_type.description()
+                        ),
+                    );
+                    Type::Int
+                }
+            }
+            BinaryOp::PlusAssign | BinaryOp::MinusAssign => {
+                // These are handled elsewhere in assignment context
+                if let Some(result) = self.numeric_result(&left_type, &right_type, false) {
+                    result
+                } else {
+                    Type::Unknown("compound_assign".into())
                 }
             }
         }
@@ -518,6 +783,7 @@ impl Analyzer {
         match literal {
             Literal::Boolean(_) => Type::Boolean,
             Literal::String(_) => Type::String,
+            Literal::Nil => Type::Nil,
             Literal::Number(n) => {
                 if (n.fract()).abs() < f64::EPSILON {
                     Type::Int
@@ -618,6 +884,19 @@ impl Analyzer {
                 if name == "error" {
                     return Type::Error;
                 }
+                
+                // Check for qualified call (module:function)
+                if name.contains(':') {
+                    let parts: Vec<&str> = name.split(':').collect();
+                    if parts.len() == 2 {
+                        let module = parts[0];
+                        if self.imports.contains(module) {
+                            // Valid imported function call
+                            return Type::Unknown(format!("call:{name}"));
+                        }
+                    }
+                }
+                
                 if !self.functions.contains(name) {
                     self.report(
                         callee_span.clone(),
@@ -636,20 +915,42 @@ impl Analyzer {
         }
     }
 
-    /// Converts a type annotation string into an internal `Type` value.
-    fn type_from_annotation(&mut self, name: &str, span: Span) -> Type {
-        match name {
-            "int" => Type::Int,
-            "float" => Type::Float,
-            "boolean" => Type::Boolean,
-            "string" => Type::String,
-            "error" => Type::Error,
-            "nil" => Type::Nil,
-            "const" => Type::Unknown("const".to_string()),
-            other => {
-                self.report(span, format!("Unknown type '{other}'"));
-                Type::Unknown(other.to_string())
-            }
+    /// Converts a type annotation/descriptor into an internal `Type` value.
+    fn type_from_annotation(&mut self, type_desc: &TypeDescriptor, span: Span) -> Type {
+        match type_desc {
+            TypeDescriptor::Basic(name) => match name.as_str() {
+                "int" => Type::Int,
+                "float" => Type::Float,
+                "boolean" => Type::Boolean,
+                "string" => Type::String,
+                "decimal" => Type::Float, // Treat decimal as float for now
+                "byte" => Type::Int, // Treat byte as int for now
+                "anydata" => Type::Unknown("anydata".to_string()),
+                "error" => Type::Error,
+                "nil" => Type::Nil,
+                other => {
+                    self.report(span, format!("Unknown type '{other}'"));
+                    Type::Unknown(other.to_string())
+                }
+            },
+            TypeDescriptor::Array { element_type, .. } => {
+                let elem_ty = self.type_from_annotation(element_type, span);
+                Type::Array(Box::new(elem_ty))
+            },
+            TypeDescriptor::Map { value_type } => {
+                let val_ty = self.type_from_annotation(value_type, span);
+                Type::Map(Box::new(val_ty))
+            },
+            TypeDescriptor::Optional(inner) => {
+                self.type_from_annotation(inner, span)
+            },
+            TypeDescriptor::Union(types) => {
+                if !types.is_empty() {
+                    self.type_from_annotation(&types[0], span)
+                } else {
+                    Type::Unknown("union".to_string())
+                }
+            },
         }
     }
 
