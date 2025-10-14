@@ -2,21 +2,18 @@ use crate::ast::Stmt;
 use crate::errors::{Diagnostic, DiagnosticKind};
 use crate::linter::Rule;
 
-const RULE_NAME: &str = "constant-case";
-const RULE_DESCRIPTION: &str = "Constant variable names should be in SCREAMING_SNAKE_CASE.";
-
 /// A linting rule to enforce that constant variable names are in SCREAMING_SNAKE_CASE.
 pub struct ConstantCase;
 
 impl Rule for ConstantCase {
     /// Returns the name of the rule.
     fn name(&self) -> &'static str {
-        RULE_NAME
+        "constant-case"
     }
 
     /// Returns a description of the rule.
     fn description(&self) -> &'static str {
-        RULE_DESCRIPTION
+        "Constant variable names should be in SCREAMING_SNAKE_CASE."
     }
 
     /// Validates a given statement to ensure that constant variable names are in SCREAMING_SNAKE_CASE.
@@ -38,7 +35,7 @@ impl Rule for ConstantCase {
             if !is_screaming_snake_case(name) {
                 diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Linter,
-                    RULE_DESCRIPTION.to_string(),
+                    "Constant variable names should be in SCREAMING_SNAKE_CASE.".to_string(),
                     name_span.clone(),
                 ));
             }
