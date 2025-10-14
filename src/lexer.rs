@@ -80,7 +80,6 @@ pub enum Token {
     Semicolon,
     Comma,
     Dot,
-    Backtick,
 
     // Literals
     Number(f64),
@@ -203,7 +202,7 @@ impl<'input> Lexer<'input> {
     /// Scans a string template literal (backtick strings with ${} interpolation).
     fn string_template(&mut self) -> Result<Token, LexError> {
         let mut template_value = String::new();
-        
+
         while self.peek() != Some(&'`') && !self.is_at_end() {
             if self.peek() == Some(&'$') && self.peek_next() == Some('{') {
                 // For now, we'll just capture the template as-is
@@ -212,7 +211,7 @@ impl<'input> Lexer<'input> {
                 self.advance();
                 template_value.push('{');
                 self.advance();
-                
+
                 let mut brace_depth = 1;
                 while brace_depth > 0 && !self.is_at_end() {
                     let ch = self.advance().unwrap();

@@ -50,27 +50,27 @@ fn main() {
     print_tokens(&tokens);
 
     let (ast, parse_diagnostics) = parse_tokens(&tokens);
-    
+
     // Collect all diagnostics
     let mut all_diagnostics = Vec::new();
-    
+
     // Add parser errors
     all_diagnostics.extend(parse_diagnostics);
-    
+
     // Run semantic analysis if we have any AST
     if !ast.is_empty() {
         if let Err(semantic_diagnostics) = analyze(&ast) {
             all_diagnostics.extend(semantic_diagnostics);
         }
-        
+
         print_ast(&ast);
-        
+
         // Run linter rules even if there are errors (to catch style issues)
         if let Err(lint_diagnostics) = run_linter(&ast, &input_code, &line_starts) {
             all_diagnostics.extend(lint_diagnostics);
         }
     }
-    
+
     // Display all collected diagnostics
     if !all_diagnostics.is_empty() {
         exit_with_diagnostics(&input_code, &line_starts, all_diagnostics);

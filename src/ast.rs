@@ -71,10 +71,7 @@ pub enum Expr {
         span: Span,
     },
     /// Array literal expression.
-    ArrayLiteral {
-        elements: Vec<Expr>,
-        span: Span,
-    },
+    ArrayLiteral { elements: Vec<Expr>, span: Span },
     /// Map literal expression.
     MapLiteral {
         entries: Vec<(String, Expr)>,
@@ -154,7 +151,7 @@ pub enum BinaryOp {
     Star,
     Slash,
     Percent,
-    
+
     // Comparison
     EqualEqual,
     NotEqual,
@@ -165,21 +162,21 @@ pub enum BinaryOp {
     Less,
     LessEqual,
     Is,
-    
+
     // Logical
     And,
     Or,
-    
+
     // Bitwise
     BitwiseAnd,
     BitwiseOr,
     BitwiseXor,
-    
+
     // Shift
     LeftShift,
     RightShift,
     UnsignedRightShift,
-    
+
     // Assignment
     PlusAssign,
     MinusAssign,

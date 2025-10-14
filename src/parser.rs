@@ -5,7 +5,7 @@
 //! grammar specification so that follow-up stages can rely on predictable AST
 //! shapes and accurate byte ranges for diagnostics.
 use crate::ast::*;
-use crate::errors::{ParseError, Span, Diagnostic};
+use crate::errors::{Diagnostic, ParseError, Span};
 use crate::lexer::Token;
 
 /// Convenient alias for parser results carrying a `ParseError` on failure.
@@ -21,8 +21,8 @@ pub struct Parser {
 impl Parser {
     /// Creates a parser over the provided token triples produced by the lexer.
     pub fn new(tokens: Vec<(usize, Token, usize)>) -> Self {
-        Self { 
-            tokens, 
+        Self {
+            tokens,
             current: 0,
             errors: Vec::new(),
         }
@@ -48,7 +48,7 @@ impl Parser {
         }
         (statements, self.errors)
     }
-    
+
     /// Synchronizes the parser state after an error by advancing to the next
     /// statement boundary. This allows the parser to recover and continue
     /// finding more errors instead of stopping at the first one.
@@ -58,10 +58,10 @@ impl Parser {
             if matches!(self.previous(), Some(Token::Semicolon)) {
                 return;
             }
-            
+
             // If we see a keyword that starts a new statement/declaration, stop
             match self.peek() {
-                Some(Token::Function) 
+                Some(Token::Function)
                 | Some(Token::Public)
                 | Some(Token::Import)
                 | Some(Token::If)
@@ -92,25 +92,34 @@ impl Parser {
     /// Parses an import declaration (import ballerina/io;).
     fn import_declaration(&mut self) -> ParseResult<Stmt> {
         let import_span_start = self.previous_span().start;
-        
+
         let mut package_path = Vec::new();
         let first_token = self.advance_owned()?;
         match first_token {
             Token::Identifier(name) => package_path.push(name),
-            _ => return Err(self.error_previous("Expected package name after 'import'", Some("identifier"))),
+            _ => {
+                return Err(
+                    self.error_previous("Expected package name after 'import'", Some("identifier"))
+                )
+            }
         }
-        
+
         while self.match_token(&[Token::Slash])? {
             let next_token = self.advance_owned()?;
             match next_token {
                 Token::Identifier(name) => package_path.push(name),
-                _ => return Err(self.error_previous("Expected package component after '/'", Some("identifier"))),
+                _ => {
+                    return Err(self.error_previous(
+                        "Expected package component after '/'",
+                        Some("identifier"),
+                    ))
+                }
             }
         }
-        
+
         self.consume(Token::Semicolon, "Expected ';' after import", Some("';'"))?;
         let semicolon_span = self.previous_span();
-        
+
         Ok(Stmt::Import {
             package_path,
             span: import_span_start..semicolon_span.end,
@@ -358,27 +367,40 @@ impl Parser {
     fn foreach_statement(&mut self) -> ParseResult<Stmt> {
         self.advance()?; // consume 'foreach'
         let foreach_span = self.previous_span();
-        
+
         // Parse optional type annotation
-        let type_annotation = if Self::is_type_start(&self.peek().cloned().unwrap_or(Token::Semicolon)) {
-            Some(self.parse_type_descriptor()?)
-        } else {
-            None
-        };
-        
+        let type_annotation =
+            if Self::is_type_start(&self.peek().cloned().unwrap_or(Token::Semicolon)) {
+                Some(self.parse_type_descriptor()?)
+            } else {
+                None
+            };
+
         // Parse variable name
         let var_token = self.advance_owned()?;
         let variable = match var_token {
             Token::Identifier(name) => name,
-            _ => return Err(self.error_previous("Expected variable name in foreach", Some("identifier"))),
+            _ => {
+                return Err(
+                    self.error_previous("Expected variable name in foreach", Some("identifier"))
+                )
+            }
         };
-        
-        self.consume(Token::In, "Expected 'in' after foreach variable", Some("'in'"))?;
+
+        self.consume(
+            Token::In,
+            "Expected 'in' after foreach variable",
+            Some("'in'"),
+        )?;
         let iterable = self.expression()?;
-        self.consume(Token::LBrace, "Expected '{' before foreach body", Some("'{'"))?;
+        self.consume(
+            Token::LBrace,
+            "Expected '{' before foreach body",
+            Some("'{'"),
+        )?;
         let body = self.block()?;
         let span_end = self.previous_span().end;
-        
+
         Ok(Stmt::Foreach {
             type_annotation,
             variable,
@@ -401,7 +423,7 @@ impl Parser {
     /// Parses a `function` declaration including parameters, optional return type, and body.
     fn function(&mut self) -> ParseResult<Stmt> {
         let is_public = self.match_token(&[Token::Public])?;
-        
+
         self.advance()?; // consume 'function'
         let keyword_span = self.previous_span();
         let name_token = self.advance_owned()?;
@@ -478,14 +500,14 @@ impl Parser {
             {
                 let span_start = name_span.start.min(assign_span.start);
                 let span_end = value_span_end.max(assign_span.end);
-                
+
                 let op = match op_token {
                     Token::Eq => None,
                     Token::PlusEq => Some(BinaryOp::PlusAssign),
                     Token::MinusEq => Some(BinaryOp::MinusAssign),
                     _ => unreachable!(),
                 };
-                
+
                 // For compound assignment, treat as binary op
                 let final_value = if let Some(binop) = op {
                     Box::new(Expr::Binary {
@@ -500,7 +522,7 @@ impl Parser {
                 } else {
                     Box::new(value)
                 };
-                
+
                 return Ok(Expr::Assign {
                     name,
                     value: final_value,
@@ -536,7 +558,11 @@ impl Parser {
             // Ternary operator: condition ? true_expr : false_expr
             let span_start = expr.span().start;
             let true_expr = self.expression()?;
-            self.consume(Token::Colon, "Expected ':' in ternary expression", Some("':'"))?;
+            self.consume(
+                Token::Colon,
+                "Expected ':' in ternary expression",
+                Some("':'"),
+            )?;
             let false_expr = self.ternary()?;
             let span_end = false_expr.span().end;
             expr = Expr::Ternary {
@@ -735,9 +761,12 @@ impl Parser {
                 let method_token = self.advance_owned()?;
                 let method_name = match method_token {
                     Token::Identifier(name) => name,
-                    _ => return Err(self.error_previous("Expected method name after '.'", Some("identifier"))),
+                    _ => {
+                        return Err(self
+                            .error_previous("Expected method name after '.'", Some("identifier")))
+                    }
                 };
-                
+
                 if self.match_token(&[Token::LParen])? {
                     // Method call: obj.method()
                     let mut arguments = Vec::new();
@@ -787,49 +816,63 @@ impl Parser {
                 if let Expr::Variable { .. } = expr {
                     if matches!(self.peek_n(1), Some(Token::Identifier(_))) {
                         self.advance()?; // consume colon
-                        
+
                         // Qualified call: module:function()
                         let func_token = self.advance_owned()?;
                         let func_name = match func_token {
                             Token::Identifier(name) => name,
-                            _ => return Err(self.error_previous("Expected function name after ':'", Some("identifier"))),
+                            _ => {
+                                return Err(self.error_previous(
+                                    "Expected function name after ':'",
+                                    Some("identifier"),
+                                ))
+                            }
                         };
-                        
+
                         // Build qualified name: module:function
                         let (module_name, span_start) = match &expr {
                             Expr::Variable { name, span } => (name.clone(), span.start),
-                            _ => return Err(self.error_previous("Qualified calls require module name before ':'", None)),
+                            _ => {
+                                return Err(self.error_previous(
+                                    "Qualified calls require module name before ':'",
+                                    None,
+                                ))
+                            }
                         };
                         let qualified_name = format!("{}:{}", module_name, func_name);
-                
-                if self.match_token(&[Token::LParen])? {
-                    let mut arguments = Vec::new();
-                    if !self.check(&Token::RParen) {
-                        loop {
-                            arguments.push(self.expression()?);
-                            if !self.match_token(&[Token::Comma])? {
-                                break;
+
+                        if self.match_token(&[Token::LParen])? {
+                            let mut arguments = Vec::new();
+                            if !self.check(&Token::RParen) {
+                                loop {
+                                    arguments.push(self.expression()?);
+                                    if !self.match_token(&[Token::Comma])? {
+                                        break;
+                                    }
+                                }
                             }
+                            self.consume(
+                                Token::RParen,
+                                "Expected ')' after arguments",
+                                Some("')'"),
+                            )?;
+                            let close_span = self.previous_span();
+                            expr = Expr::Call {
+                                callee: Box::new(Expr::Variable {
+                                    name: qualified_name,
+                                    span: span_start..close_span.start,
+                                }),
+                                arguments,
+                                span: span_start..close_span.end,
+                            };
+                        } else {
+                            // Just module:function reference without call
+                            let span = span_start..self.previous_span().end;
+                            expr = Expr::Variable {
+                                name: qualified_name,
+                                span,
+                            };
                         }
-                    }
-                    self.consume(Token::RParen, "Expected ')' after arguments", Some("')'"))?;
-                    let close_span = self.previous_span();
-                    expr = Expr::Call {
-                        callee: Box::new(Expr::Variable {
-                            name: qualified_name,
-                            span: span_start..close_span.start,
-                        }),
-                        arguments,
-                        span: span_start..close_span.end,
-                    };
-                } else {
-                    // Just module:function reference without call
-                    let span = span_start..self.previous_span().end;
-                    expr = Expr::Variable {
-                        name: qualified_name,
-                        span,
-                    };
-                }
                     } else {
                         break;
                     }
@@ -878,7 +921,9 @@ impl Parser {
                         let end_span = self.previous_span();
                         Ok(Expr::Cast {
                             type_desc: TypeDescriptor::Basic(name),
-                            expr: Box::new(self.make_literal_expr(Literal::String(s), end_span.clone())),
+                            expr: Box::new(
+                                self.make_literal_expr(Literal::String(s), end_span.clone()),
+                            ),
                             span: token_span.start..end_span.end,
                         })
                     } else {
@@ -897,7 +942,9 @@ impl Parser {
                 if self.check(&Token::RParen) {
                     self.advance()?;
                     let close_span = self.previous_span();
-                    return Ok(self.make_literal_expr(Literal::Nil, open_span.start..close_span.end));
+                    return Ok(
+                        self.make_literal_expr(Literal::Nil, open_span.start..close_span.end)
+                    );
                 }
                 let expr = self.expression()?;
                 self.consume(Token::RParen, "Expected ')' after expression", Some("')'"))?;
@@ -920,7 +967,7 @@ impl Parser {
                 // Array literal: [1, 2, 3]
                 let open_span = token_span;
                 let mut elements = Vec::new();
-                
+
                 if !self.check(&Token::RBracket) {
                     loop {
                         elements.push(self.expression()?);
@@ -929,10 +976,14 @@ impl Parser {
                         }
                     }
                 }
-                
-                self.consume(Token::RBracket, "Expected ']' after array elements", Some("']'"))?;
+
+                self.consume(
+                    Token::RBracket,
+                    "Expected ']' after array elements",
+                    Some("']'"),
+                )?;
                 let close_span = self.previous_span();
-                
+
                 Ok(Expr::ArrayLiteral {
                     elements,
                     span: open_span.start..close_span.end,
@@ -942,29 +993,34 @@ impl Parser {
                 // Map literal: {key: value}
                 let open_span = token_span;
                 let mut entries = Vec::new();
-                
+
                 if !self.check(&Token::RBrace) {
                     loop {
                         let key_token = self.advance_owned()?;
                         let key = match key_token {
                             Token::StringLiteral(s) => s,
                             Token::Identifier(s) => s,
-                            _ => return Err(self.error_previous("Expected string key in map literal", Some("string"))),
+                            _ => {
+                                return Err(self.error_previous(
+                                    "Expected string key in map literal",
+                                    Some("string"),
+                                ))
+                            }
                         };
-                        
+
                         self.consume(Token::Colon, "Expected ':' after map key", Some("':'"))?;
                         let value = self.expression()?;
                         entries.push((key, value));
-                        
+
                         if !self.match_token(&[Token::Comma])? {
                             break;
                         }
                     }
                 }
-                
+
                 self.consume(Token::RBrace, "Expected '}' after map entries", Some("'}'"))?;
                 let close_span = self.previous_span();
-                
+
                 Ok(Expr::MapLiteral {
                     entries,
                     span: open_span.start..close_span.end,
@@ -974,19 +1030,6 @@ impl Parser {
                 &format!("Unexpected token in expression: {:?}", token),
                 None,
             )),
-        }
-    }
-
-    /// Parses a type annotation following the limited Ballerina subset grammar.
-    fn parse_type(&mut self) -> ParseResult<String> {
-        let token = self.advance_owned()?;
-        match token {
-            Token::Identifier(s) => Ok(s),
-            Token::Int => Ok("int".to_string()),
-            Token::String => Ok("string".to_string()),
-            Token::Boolean => Ok("boolean".to_string()),
-            Token::Float => Ok("float".to_string()),
-            t => Err(self.error_previous(&format!("Expected type, found {:?}", t), Some("type"))),
         }
     }
 
@@ -1008,7 +1051,11 @@ impl Parser {
                 Token::Byte => "byte".to_string(),
                 Token::Anydata => "anydata".to_string(),
                 Token::Identifier(s) => s,
-                t => return Err(self.error_previous(&format!("Expected type, found {:?}", t), Some("type"))),
+                t => {
+                    return Err(
+                        self.error_previous(&format!("Expected type, found {:?}", t), Some("type"))
+                    )
+                }
             };
             TypeDescriptor::Basic(base_type)
         };
@@ -1031,7 +1078,11 @@ impl Parser {
                 } else {
                     None
                 };
-                self.consume(Token::RBracket, "Expected ']' after array dimension", Some("']'"))?;
+                self.consume(
+                    Token::RBracket,
+                    "Expected ']' after array dimension",
+                    Some("']'"),
+                )?;
                 type_desc = TypeDescriptor::Array {
                     element_type: Box::new(type_desc),
                     dimension,
@@ -1240,14 +1291,19 @@ impl Parser {
                 // Could be: int x, int[] x, int[3] x, etc.
                 // Need to skip type suffixes to find identifier
                 let mut offset = 1;
-                
+
                 // Skip array brackets and other type suffixes
                 loop {
                     match self.peek_n(offset) {
                         Some(Token::LBracket) => {
                             // Skip [, maybe a number, identifier, or *, then ]
                             offset += 1;
-                            if matches!(self.peek_n(offset), Some(Token::Number(_)) | Some(Token::Star) | Some(Token::Identifier(_))) {
+                            if matches!(
+                                self.peek_n(offset),
+                                Some(Token::Number(_))
+                                    | Some(Token::Star)
+                                    | Some(Token::Identifier(_))
+                            ) {
                                 offset += 1;
                             }
                             if matches!(self.peek_n(offset), Some(Token::RBracket)) {
@@ -1291,7 +1347,14 @@ impl Parser {
     fn is_type_start(token: &Token) -> bool {
         matches!(
             token,
-            Token::Int | Token::String | Token::Boolean | Token::Float | Token::Decimal | Token::Byte | Token::Anydata | Token::Map
+            Token::Int
+                | Token::String
+                | Token::Boolean
+                | Token::Float
+                | Token::Decimal
+                | Token::Byte
+                | Token::Anydata
+                | Token::Map
         )
     }
 }

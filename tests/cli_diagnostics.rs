@@ -19,6 +19,7 @@ fn stdout(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
+#[allow(dead_code)]
 fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
@@ -31,16 +32,25 @@ fn stderr(output: &Output) -> String {
 fn comprehensive_test_passes() {
     let output = run_cli(COMPREHENSIVE_TEST);
     let out = stdout(&output);
-    
+
     // Should complete all stages
     assert!(out.contains("Lexing complete!"), "Lexing should complete");
     assert!(out.contains("-- AST --"), "Should generate AST");
-    
+
     // Should have no errors (check for the actual error format, not comments)
-    assert!(!out.contains("parser error:"), "Should have no parser errors");
-    assert!(!out.contains("semantic error:"), "Should have no semantic errors");
-    assert!(!out.contains("linter error:"), "Should have no linter errors");
-    
+    assert!(
+        !out.contains("parser error:"),
+        "Should have no parser errors"
+    );
+    assert!(
+        !out.contains("semantic error:"),
+        "Should have no semantic errors"
+    );
+    assert!(
+        !out.contains("linter error:"),
+        "Should have no linter errors"
+    );
+
     assert!(
         output.status.success(),
         "Comprehensive test should pass without errors"
@@ -340,7 +350,9 @@ fn linter_reports_constant_case() {
     let output = run_cli(code);
     assert!(!output.status.success());
     let out = stdout(&output);
-    assert!(out.contains("linter error: Constant variable names should be in SCREAMING_SNAKE_CASE."));
+    assert!(
+        out.contains("linter error: Constant variable names should be in SCREAMING_SNAKE_CASE.")
+    );
 }
 
 #[test]
@@ -370,10 +382,14 @@ fn error_recovery_collects_multiple_parser_errors() {
     let output = run_cli(code);
     assert!(!output.status.success());
     let out = stdout(&output);
-    
+
     // Should collect parser errors from multiple locations
     let error_count = out.matches("parser error").count();
-    assert!(error_count >= 2, "Should report multiple parser errors, found: {}", error_count);
+    assert!(
+        error_count >= 2,
+        "Should report multiple parser errors, found: {}",
+        error_count
+    );
 }
 
 #[test]
@@ -389,10 +405,13 @@ fn error_recovery_runs_all_stages() {
     let output = run_cli(code);
     assert!(!output.status.success());
     let out = stdout(&output);
-    
+
     // Should have errors from all stages
     assert!(out.contains("parser error"), "Should have parser errors");
-    assert!(out.contains("semantic error"), "Should have semantic errors");
+    assert!(
+        out.contains("semantic error"),
+        "Should have semantic errors"
+    );
     assert!(out.contains("linter error"), "Should have linter errors");
 }
 
@@ -404,10 +423,13 @@ fn error_recovery_still_parses_valid_code() {
     "#;
     let output = run_cli(code);
     let out = stdout(&output);
-    
+
     // Should have parser error for incomplete expression
     assert!(out.contains("parser error:"));
-    
+
     // Should still generate AST output (even if some nodes are skipped)
-    assert!(out.contains("-- AST --"), "Should still generate AST despite errors");
+    assert!(
+        out.contains("-- AST --"),
+        "Should still generate AST despite errors"
+    );
 }
