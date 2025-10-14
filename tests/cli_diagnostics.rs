@@ -151,3 +151,13 @@ fn parser_reports_const_with_type() {
     let out = stdout(&output);
     assert!(out.contains("parser error: const declarations cannot have a type annotation"));
 }
+
+#[test]
+fn linter_reports_line_length() {
+    let code = "string long_line = \"this is a very long line that is longer than 120 characters just to test the line length rule in the linter, so that it will trigger the error and we can see the output of the linter\";";
+    let output = run_cli(code);
+    assert!(!output.status.success());
+    let out = stdout(&output);
+    assert!(out.contains("linter error: Lines should not exceed 120 characters."));
+    assert!(out.contains("linter error: Variable \"long_line\" is not in camelCase."));
+}

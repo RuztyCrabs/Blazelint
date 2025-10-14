@@ -35,7 +35,7 @@ impl Rule for CamelCase {
     /// # Returns
     ///
     /// A vector of diagnostics found in the statement
-    fn validate(&self, statement: &Stmt) -> Vec<Diagnostic> {
+    fn validate(&self, statement: &Stmt, _source: &str) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
         if let Stmt::VarDecl {

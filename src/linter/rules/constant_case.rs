@@ -28,7 +28,7 @@ impl Rule for ConstantCase {
     /// # Returns
     ///
     /// A vector of diagnostics if the constant variable name is not in SCREAMING_SNAKE_CASE.
-    fn validate(&self, statement: &Stmt) -> Vec<Diagnostic> {
+    fn validate(&self, statement: &Stmt, _source: &str) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
         if let Stmt::ConstDecl {

@@ -9,9 +9,9 @@ use ast::Stmt;
 use errors::{Diagnostic, DiagnosticKind};
 use lexer::Lexer;
 use linter::{
-    // Existing rules
     rules::camel_case::CamelCase,
     rules::constant_case::ConstantCase,
+    rules::line_length::LineLength, // Import the new rule
     Rule,
 };
 use parser::Parser;
@@ -43,7 +43,10 @@ fn main() {
 
     let tokens = match lex_input(&input_code) {
         Ok(tokens) => tokens,
-        Err(diagnostics) => exit_with_diagnostics(&input_code, &line_starts, diagnostics),
+        Err(diagnostics) => {
+            exit_with_diagnostics(&input_code, &line_starts, diagnostics);
+            process::exit(1);
+        }
     };
 
     print_tokens(&tokens);
@@ -52,11 +55,18 @@ fn main() {
         Ok(ast) => {
             if let Err(diagnostics) = analyze(&ast) {
                 exit_with_diagnostics(&input_code, &line_starts, diagnostics);
+                process::exit(1);
             }
             print_ast(&ast);
-            run_linter(&ast, &input_code, &line_starts);
+            if let Err(diagnostics) = run_linter(&ast, &input_code, &line_starts) {
+                exit_with_diagnostics(&input_code, &line_starts, diagnostics);
+                process::exit(1);
+            }
         }
-        Err(diagnostic) => exit_with_diagnostics(&input_code, &line_starts, vec![diagnostic]),
+        Err(diagnostic) => {
+            exit_with_diagnostics(&input_code, &line_starts, vec![diagnostic]);
+            process::exit(1);
+        }
     }
 }
 
@@ -98,7 +108,7 @@ fn lex_input(input: &str) -> Result<Vec<(usize, lexer::Token, usize)>, Vec<Diagn
 
 fn parse_tokens(tokens: &[(usize, lexer::Token, usize)]) -> Result<Vec<Stmt>, Diagnostic> {
     let mut parser = Parser::new(tokens.to_vec());
-    parser.parse().map_err(Into::into)
+    parser.parse().map_err(|e| e.into())
 }
 
 fn print_tokens(tokens: &[(usize, lexer::Token, usize)]) {
@@ -129,26 +139,31 @@ fn print_ast(ast: &[Stmt]) {
 /// * `source` - The source code string, used for displaying diagnostic messages.
 /// * `line_starts` - A slice of byte offsets, where each offset is the start of a new line.
 ///   This is used to convert a diagnostic's position into a line and column number.
-fn run_linter(ast: &[Stmt], source: &str, line_starts: &[usize]) {
+fn run_linter(ast: &[Stmt], source: &str, _line_starts: &[usize]) -> Result<(), Vec<Diagnostic>> {
     // if you add a new rule then add that same as the CamelCase
-    let rules: Vec<Box<dyn Rule>> = vec![Box::new(CamelCase), Box::new(ConstantCase)];
+    let rules: Vec<Box<dyn Rule>> = vec![
+        Box::new(CamelCase),
+        Box::new(ConstantCase),
+        Box::new(LineLength),
+    ];
 
     let mut diagnostics = Vec::new();
 
     for stmt in ast {
         for rule in &rules {
-            diagnostics.extend(rule.validate(stmt));
+            diagnostics.extend(rule.validate(stmt, source));
         }
     }
 
     if !diagnostics.is_empty() {
-        print_diagnostics(source, line_starts, &diagnostics);
+        Err(diagnostics)
+    } else {
+        Ok(())
     }
 }
 
-fn exit_with_diagnostics(source: &str, line_starts: &[usize], diagnostics: Vec<Diagnostic>) -> ! {
+fn exit_with_diagnostics(source: &str, line_starts: &[usize], diagnostics: Vec<Diagnostic>) {
     print_diagnostics(source, line_starts, &diagnostics);
-    process::exit(1);
 }
 
 /// Computes the byte indices where each line in `source` begins, including a

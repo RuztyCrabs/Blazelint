@@ -12,5 +12,5 @@ pub trait Rule {
     fn description(&self) -> &'static str;
 
     /// Validates a given statement.
-    fn validate(&self, statement: &Stmt) -> Vec<Diagnostic>;
+    fn validate(&self, statement: &Stmt, source: &str) -> Vec<Diagnostic>;
 }
