@@ -4,8 +4,8 @@
 
 ##
 
-> [!CAUTION]
-> This is implementing and intended for **Research Purposes** and **SHOULD NOT BE USED ON PRODUCTION ENVIRONMENTS**. The goal is to determine the feasibility, performance and developer experience of Rust Programming Language for implementing static code analyzers for Ballerina Language.
+> [!WARNING]
+> This is a **University Research Project** and **SHOULD NOT BE USED ON PRODUCTION ENVIRONMENTS**. The goal is to determine the feasibility, performance and developer experience of Rust Programming Language for implementing static code analyzers for Ballerina Language.
 
 ## Table of Contents
 
@@ -39,10 +39,7 @@ Install the latest published version from [crates.io](https://crates.io/crates/b
 cargo install blazelint
 ```
 
-> [!TIP]
-> Re-run the command with `--force` to pick up newly published releases.
-
-Prefer a prebuilt executable? Download the Linux x86_64 binary from the [latest GitHub release](https://github.com/RuztyCrabs/Blazelint/releases/latest) and place it in your `$PATH`.
+Pre-build binares are available for Linux from the [latest GitHub release](https://github.com/RuztyCrabs/Blazelint/releases/latest) and place it in your `$PATH`.
 
 Windows and MacOS binaries will be added in next release.
 
@@ -76,7 +73,7 @@ blazelint tests/test.bal
 
 ## Development environment
 
-We ship a ready-to-use [Dev Container](https://containers.dev/) so you can jump on to developing BlazeLint without installing anything locally.
+We provide a pre-configured [Dev Container](https://containers.dev/) that you can use to jump on to developing BlazeLint without installing anything locally. You can skip pre-requisites if you plan to use this. 
 
 ### Using GitHub Codespaces
 
@@ -84,7 +81,7 @@ Dev Container can be launched and used fully remotely inside a browser using Git
 
 1. Click **Code → Create codespace** from the GitHub UI.
 2. Wait for the Codespace to provision (first run will take some significant time).
-3. Start Developing.
+3. Start Developing!
 
 ### Using VS Code (if you have it installed locally)
 
@@ -92,7 +89,7 @@ Dev Container can be launched and used fully remotely inside a browser using Git
 2. Clone this repository and open it in VS Code.
 3. Run the **Dev Containers: Reopen in Container** command.
 4. Wait till the container spins up.
-5. Start Developing.
+5. Start Developing!
 
 The container comes with:
 
@@ -104,7 +101,7 @@ The container comes with:
  
 ## Building
 
-### Prerequsites (skip if using the dev container)
+### Prerequsites
 
 - Git 2.51.0 or newer
 - Rust Toolchain 1.86.0 or newer [(Get it here)](https://rust-lang.org/tools/install/)
@@ -128,12 +125,9 @@ cd Blazelint
 ```bash
 cargo build --release
 ```
-> [!NOTE]
-> Cargo build will download any required dependancies automatically but you can explicitly get them using `cargo fetch` if it still complains about missing libraries.
-
 ## Debugging
 
-### Prerequsites (skip if using the dev container)
+### Prerequsites
 
 - Build requirements stated [here](#building).
 - [VsCode IDE by Microsoft](https://code.visualstudio.com/download)
@@ -155,8 +149,6 @@ Run all formatter, lint, and test checks locally before opening a pull request:
 ```bash
 bash scripts/check.sh
 ```
-> [!NOTE]
-> Cargo will download dev dependancies automatically but you can explicitly get them using `cargo fetch` if it still complains about missing libraries.
 
 ## TODO
 
