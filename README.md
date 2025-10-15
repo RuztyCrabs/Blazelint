@@ -148,7 +148,7 @@ cargo build --release
 
 - feature/linter-core: Changes to the linter engine (lexer, parser, semantic analyzer and BNF document).
 - ci/cd: Changes related to continous integration and deployments.
-- docs: Changes related to documenation.
+- docs: Changes related to documentation.
 
 ### Run all formatter, lint, and test checks locally before opening a pull request:
 
