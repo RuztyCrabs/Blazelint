@@ -1,15 +1,21 @@
+### BNF for the selected subset of Ballerina Grammar
+
+```bnf
 <program> ::= <import_declaration>* <module_level_declaration>*
 
 <import_declaration> ::= "import" <package_name> ";"
 <package_name> ::= IDENTIFIER ("/" IDENTIFIER)*
 
 <module_level_declaration> ::= <var_declaration>
+                             | <const_declaration>
                              | <function_declaration>
 
 <var_declaration> ::= ["final"] <typed_binding_pattern> "=" <expression> ";"
                     | ["final"] <type_descriptor> <identifier> ";"
 <typed_binding_pattern> ::= "var" <identifier>
                           | <type_descriptor> <identifier>
+
+<const_declaration> ::= "const" <identifier> "=" <expression> ";"
 
 <type_descriptor> ::= <basic_type> <type_suffix>*
                     | "map" "<" <type_descriptor> ">"
@@ -21,15 +27,16 @@
 <array_dimension> ::= NUMBER | "*"
 
 <function_declaration> ::= "function" <identifier> "(" <parameters> ")" ["returns" <type_descriptor>] <block>
-                         | "public" "function" "main" "(" [<parameters>] ")" ["returns" <type_descriptor>] <block>
+                         | "public" "function" <identifier> "(" [<parameters>] ")" ["returns" <type_descriptor>] <block>
 <parameters> ::= <parameter> ("," <parameter>)* | ε
-<parameter> ::= <identifier> ":" <type_descriptor> ["=" <expression>]
+<parameter> ::= <type_descriptor> <identifier> ["=" <expression>]
 
 <block> ::= "{" <statement>* "}"
 
 <statement> ::= <var_declaration>
               | <if_statement>
               | <return_statement>
+              | <panic_statement>
               | <foreach_statement>
               | <while_statement>
               | <break_statement>
@@ -43,7 +50,9 @@
 
 <return_statement> ::= "return" [<expression>] ";"
 
-<foreach_statement> ::= "foreach" <type_descriptor> <identifier> "in" <expression> <block>
+<panic_statement> ::= "panic" <expression> ";"
+
+<foreach_statement> ::= "foreach" [<type_descriptor>] <identifier> "in" <expression> <block>
 
 <while_statement> ::= "while" <expression> <block>
 
@@ -68,7 +77,7 @@
 
 <equality> ::= <comparison> (("==" | "!=" | "===" | "!==") <comparison>)*
 
-<comparison> ::= <bitwise_or> ((">" | ">=" | "<" | "<=" | "is") <bitwise_or>)*
+<comparison> ::= <shift> ((">" | ">=" | "<" | "<=" | "is") <shift>)*
 
 <bitwise_or> ::= <bitwise_xor> ("|" <bitwise_xor>)*
 
@@ -80,7 +89,7 @@
 
 <additive> ::= <multiplicative> (("+" | "-") <multiplicative>)*
 
-<multiplicative> ::= <unary> (("*" | "/") <unary>)*
+<multiplicative> ::= <unary> (("*" | "/" | "%") <unary>)*
 
 <unary> ::= ("!" | "-" | "~" | "+") <unary>
           | <postfix>
@@ -88,6 +97,7 @@
 <postfix> ::= <primary> <postfix_op>*
 <postfix_op> ::= "[" <expression> "]"
                | "." <identifier> "(" [<call_arguments>] ")"
+               | ":" <identifier> "(" [<call_arguments>] ")"
                | "(" [<call_arguments>] ")"
 
 <call_arguments> ::= <positional_arguments>
@@ -128,3 +138,4 @@
 <identifier> ::= IDENTIFIER
                | "'" IDENTIFIER
                | IDENTIFIER ("\\" CHAR)*
+```
