@@ -144,7 +144,7 @@ cargo build --release
 
 ## Contributing
 
-### Changes should be developed and push to following branches based on the area of the feature.
+### Changes should be developed and pushed to following branches based on the area of the feature.
 
 - feature/linter-core: Changes to the linter engine (lexer, parser, semantic analyzer and BNF document).
 - ci/cd: Changes related to continous integration and deployments.
