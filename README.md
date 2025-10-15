@@ -39,7 +39,7 @@ Install the latest published version from [crates.io](https://crates.io/crates/b
 cargo install blazelint
 ```
 
-Pre-build binares are available for Linux from the [latest GitHub release](https://github.com/RuztyCrabs/Blazelint/releases/latest) and place it in your `$PATH`.
+Pre-build binaries are available for Linux from the [latest GitHub release](https://github.com/RuztyCrabs/Blazelint/releases/latest) and place it in your `$PATH`.
 
 Windows and MacOS binaries will be added in next release.
 
