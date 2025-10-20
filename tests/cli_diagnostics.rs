@@ -433,3 +433,14 @@ fn error_recovery_still_parses_valid_code() {
         "Should still generate AST despite errors"
     );
 }
+
+#[test]
+fn linter_reports_max_function_length() {
+    let code = include_str!("test-bal-files/long_function.bal");
+    let output = run_cli(code);
+    assert!(!output.status.success());
+    let out = stdout(&output);
+    assert!(out
+        .contains("linter error: Function \"longFunction\" has 51 lines (exceeds maximum of 50)"));
+    assert!(!out.contains("linter error: Function \"shortFunction\""));
+}
