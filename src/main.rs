@@ -13,7 +13,6 @@ use linter::{
     rules::constant_case::ConstantCase,
     rules::line_length::LineLength, // Import the new rule
     rules::max_function_length::MaxFunctionLength,
-    rules::unused_variables::UnusedVariables, // Import the new rule
     Rule,
 };
 use parser::Parser;
@@ -150,7 +149,6 @@ fn run_linter(ast: &[Stmt], source: &str, _line_starts: &[usize]) -> Result<(), 
         Box::new(ConstantCase),
         Box::new(LineLength),
         Box::new(MaxFunctionLength::new(None)),
-        Box::new(UnusedVariables::default()),
     ];
 
     let mut diagnostics = Vec::new();

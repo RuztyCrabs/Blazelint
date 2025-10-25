@@ -155,7 +155,7 @@ function other_tests() {
     string firstName = names[1];
     
     // Map access
-    string? appName = config[names[0]];
+    string? appName = config["name"];
     
     // Method calls
     names.push("David");
