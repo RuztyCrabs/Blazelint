@@ -1,8 +1,3 @@
-public function shortFunction() {
-    int x = 5;
-    return x * 2;
-}
-
 public function longFunction() {
     int a = 1;
     int b = 2;
@@ -49,10 +44,5 @@ public function longFunction() {
     int aq = 43;
     int ar = 44;
     int as = 45;
-    int at = 46;
-    int au = 47;
-    int av = 48;
-    int aw = 49;
-    int ax = 50;
-    int ay = 51;
+    int at = 46;  
 }

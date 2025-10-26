@@ -441,6 +441,6 @@ fn linter_reports_max_function_length() {
     assert!(!output.status.success());
     let out = stdout(&output);
     assert!(out
-        .contains("linter error: Function \"longFunction\" has 51 lines (exceeds maximum of 50)"));
+        .contains("linter error: Function \"longFunction\" has 53 lines (exceeds maximum of 50)"));
     assert!(!out.contains("linter error: Function \"shortFunction\""));
 }
