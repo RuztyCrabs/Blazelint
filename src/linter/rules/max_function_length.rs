@@ -46,6 +46,16 @@ impl Rule for MaxFunctionLength {
 
             let body_source = &source[body_start..body_end];
 
+            // The line counting logic has an off-by-one error. Using lines() on a substring
+            // excludes the last line if it doesn't end with a newline. Additionally, slicing
+            // source[body_start..body_end] captures content from the start of the first
+            // statement to the end of the last statement, but the actual function body
+            // includes the opening and closing braces. This means the count doesn't include
+            // the closing brace line. For the longFunction test case with 52 lines of actual
+            // function body (including braces), this logic counts 51 lines, which happens to
+            // match the test expectation but is semantically incorrect. Consider counting
+            // lines based on the function's full span or adjusting the slice to include the
+            // complete function body.
             let line_count = body_source
                 .lines()
                 .map(str::trim)
