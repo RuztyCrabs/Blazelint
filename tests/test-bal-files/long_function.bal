@@ -44,5 +44,8 @@ public function longFunction() {
     int aq = 43;
     int ar = 44;
     int as = 45;
-    int at = 46;  
+    int at = 46; 
+    int au = 47;
+    int av = 48;
+    int aw = 49;
 }

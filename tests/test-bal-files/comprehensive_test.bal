@@ -94,14 +94,12 @@ function control_flow_tests() {
     if (x > 0) {
         io:println("Positive");
     }
-    
     // If-else statement
     if (flag) {
         io:println("True branch");
     } else {
         io:println("False branch");
     }
-    
     // Nested if-else
     if (x > 10) {
         io:println("Greater than 10");
@@ -110,24 +108,20 @@ function control_flow_tests() {
     } else {
         io:println("5 or less");
     }
-    
     // While loop
     int i = 0;
     while (i < 5) {
         io:println(i);
         i += 1;
     }
-    
     // Foreach loop with type annotation
     foreach int num in numbers {
         io:println(num);
     }
-    
     // Foreach with string array
     foreach string personName in names {
         io:println(personName);
     }
-    
     // Break and continue in loops
     int j = 0;
     while (j < 10) {

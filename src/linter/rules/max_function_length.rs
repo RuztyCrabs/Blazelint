@@ -43,10 +43,29 @@ impl Rule for MaxFunctionLength {
 
             let function_source = &source[span.start..span.end];
 
-            let line_count = function_source
+            // Remove block comments before counting lines
+            let mut without_block_comments = String::new();
+            let mut in_block_comment = false;
+            let mut chars = function_source.chars().peekable();
+
+            while let Some(c) = chars.next() {
+                if in_block_comment {
+                    if c == '*' && chars.peek() == Some(&'/') {
+                        chars.next(); // consume '/'
+                        in_block_comment = false;
+                    }
+                } else if c == '/' && chars.peek() == Some(&'*') {
+                    chars.next(); // consume '*'
+                    in_block_comment = true;
+                } else {
+                    without_block_comments.push(c);
+                }
+            }
+
+            let line_count = without_block_comments
                 .lines()
                 .map(str::trim)
-                .filter(|line| !line.is_empty() && !line.starts_with("//"))
+                .filter(|line| !line.starts_with("//"))
                 .count();
 
             if line_count > self.max_length {
