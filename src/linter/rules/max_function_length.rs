@@ -66,6 +66,7 @@ impl Rule for MaxFunctionLength {
                 .lines()
                 .map(str::trim)
                 .filter(|line| !line.starts_with("//"))
+                .filter(|line| !line.is_empty())
                 .count();
 
             if line_count > self.max_length {
