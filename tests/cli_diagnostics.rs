@@ -167,15 +167,15 @@ fn parser_handles_function_declarations() {
 #[test]
 fn parser_handles_if_else_if_else() {
     let code = r#"
-        function test(int x) {
-            if (x > 10) {
-                int y = 1;
-            } else if (x > 5) {
-                int y = 2;
-            } else {
-                int y = 3;
-            }
-        }
+        function test(int x) { 
+            if (x > 10) { 
+                int y = 1; 
+            } else if (x > 5) { 
+                int y = 2; 
+            } else { 
+                int y = 3; 
+            } 
+        } 
     "#;
     let output = run_cli(code);
     let out = stdout(&output);
@@ -213,10 +213,10 @@ fn parser_handles_ternary_operator() {
 #[test]
 fn parser_handles_arrays_and_maps() {
     let code = r#"
-        function test() {
-            int[] arr = [1, 2, 3];
+        function test() { 
+            int[] arr = [1, 2, 3]; 
             map<string> m = {key: "value"};
-        }
+        } 
     "#;
     let output = run_cli(code);
     let out = stdout(&output);
@@ -372,6 +372,24 @@ fn linter_accepts_valid_constant_case() {
     assert!(output.status.success(), "Valid constants should pass");
 }
 
+#[test]
+fn linter_reports_max_function_length_with_empty_lines() {
+    let mut code = "public function longFunction() {\n".to_string();
+    for i in 0..48 {
+        code.push_str(&format!("    int a{} = {};\n", i, i));
+        if i % 2 == 0 {
+            code.push('\n');
+        }
+    }
+    code.push('}');
+
+    let output = run_cli(&code);
+    assert!(!output.status.success());
+    let out = stdout(&output);
+    assert!(out
+        .contains("linter error: Function \"longFunction\" has 74 lines (exceeds maximum of 50)"));
+}
+
 // ============================================================================
 // ERROR RECOVERY TESTS
 // ============================================================================
@@ -419,7 +437,7 @@ fn error_recovery_runs_all_stages() {
 fn error_recovery_still_parses_valid_code() {
     let code = r#"
         int badSyntax = 
-        function goodFunc() returns int { return 42; }
+        function goodFunc() returns int { return 42; } 
     "#;
     let output = run_cli(code);
     let out = stdout(&output);
@@ -432,4 +450,15 @@ fn error_recovery_still_parses_valid_code() {
         out.contains("-- AST --"),
         "Should still generate AST despite errors"
     );
+}
+
+#[test]
+fn linter_reports_max_function_length() {
+    let code = include_str!("test-bal-files/long_function.bal");
+    let output = run_cli(code);
+    assert!(!output.status.success());
+    let out = stdout(&output);
+    assert!(out
+        .contains("linter error: Function \"longFunction\" has 51 lines (exceeds maximum of 50)"));
+    assert!(!out.contains("linter error: Function \"shortFunction\""));
 }

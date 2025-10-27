@@ -10,6 +10,16 @@ const PI_VALUE = 3.14;
 
 // Public function with parameters and return type
 public function main() {
+    variable_declarations();
+    operator_tests();
+    control_flow_tests();
+    other_tests();
+    
+    // Return statement (in main, returns nil)
+    return;
+}
+
+function variable_declarations() {
     // Variable declarations with type annotations
     int x = 5;
     float y = 3.14;
@@ -23,27 +33,29 @@ public function main() {
     // Array declarations
     int[] numbers = [1, 2, 3, 4, 5];
     string[] names = ["Alice", "Bob", "Charlie"];
-    // TODO: Fix semantic error - float array literal type inference
-    // float[3] coordinates = [1.0, 2.0, 3.0];
     
     // Map declarations
     map<string> config = {name: "app", version: "1.0"};
     map<int> scores = {math: 90, science: 85};
-    
+}
+
+function operator_tests() {
+    int x = 5;
+    float y = 3.14;
+    boolean flag = true;
+    int sum = 30;
+    int diff = 20;
+
     // Arithmetic operators
-    int sum = 10 + 20;
-    int diff = 50 - 30;
+    int sum_op = 10 + 20;
+    int diff_op = 50 - 30;
     int product = 5 * 4;
-    // TODO: Fix semantic error - division should return int when both operands are int
-    // int quotient = 100 / 5;
     int remainder = 10 % 3;
     
     // Comparison operators
     boolean isEqual = x == 5;
     boolean notEqual = y != 0.0;
     boolean greater = sum > diff;
-    // TODO: Fix semantic error - division returns float
-    // boolean less = product < quotient;
     boolean greaterEqual = x >= 5;
     boolean lessEqual = y <= 10.0;
     
@@ -70,44 +82,19 @@ public function main() {
     
     // Ternary operator
     int max = (x > 5) ? x : 10;
-    
-    // Elvis operator (needs nullable type)
-    // TODO: Fix semantic error - nullable type handling
-    // int? nullableValue = ();
-    // int result = nullableValue ?: 42;
-    
-    // Array access
-    int firstNumber = numbers[0];
-    string firstName = names[1];
-    
-    // Map access
-    string? appName = config[name];
-    
-    // Method calls
-    names.push("David");
-    int length = names.length();
-    
-    // Function calls
-    io:println(message);
-    io:println(numbers);
-    io:println(names);
-    
-    calculate(10, 20);
-    // TODO: Fix semantic error - function return type tracking
-    // int total = add(5, 3);
-    
-    // If statement
-    if (x > 0) {
-        io:println("Positive");
-    }
-    
+}
+
+function control_flow_tests() {
+    int x = 5;
+    boolean flag = true;
+    int[] numbers = [1, 2, 3, 4, 5];
+    string[] names = ["Alice", "Bob", "Charlie"];
     // If-else statement
     if (flag) {
         io:println("True branch");
     } else {
         io:println("False branch");
     }
-    
     // Nested if-else
     if (x > 10) {
         io:println("Greater than 10");
@@ -116,24 +103,20 @@ public function main() {
     } else {
         io:println("5 or less");
     }
-    
     // While loop
     int i = 0;
     while (i < 5) {
         io:println(i);
         i += 1;
     }
-    
     // Foreach loop with type annotation
     foreach int num in numbers {
         io:println(num);
     }
-    
     // Foreach with string array
     foreach string personName in names {
         io:println(personName);
     }
-    
     // Break and continue in loops
     int j = 0;
     while (j < 10) {
@@ -147,6 +130,32 @@ public function main() {
         io:println(j);
         j += 1;
     }
+}
+
+function other_tests() {
+    int x = 5;
+    string message = "Hello, World!";
+    int[] numbers = [1, 2, 3, 4, 5];
+    string[] names = ["Alice", "Bob", "Charlie"];
+    map<string> config = {name: "app", version: "1.0"};
+
+    // Array access
+    int firstNumber = numbers[0];
+    string firstName = names[1];
+    
+    // Map access
+    string? appName = config["name"];
+    
+    // Method calls
+    names.push("David");
+    int length = names.length();
+    
+    // Function calls
+    io:println(message);
+    io:println(numbers);
+    io:println(names);
+    
+    calculate(10, 20);
     
     // Type casts
     int intValue = 42;
@@ -157,7 +166,7 @@ public function main() {
     
     // Grouped expressions
     int calculation = (10 + 20) * (5 - 2);
-    boolean complexCondition = ((x > 0) && (y < 100.0)) || (flag == true);
+    boolean complexCondition = ((x > 0) && (x < 100)) || (x > 200);
     
     // Unary operators
     int negative = -x;
@@ -168,9 +177,6 @@ public function main() {
     int a = 1;
     int b = 2;
     int c = 3;
-    
-    // Return statement (in main, returns nil)
-    return;
 }
 
 // Function with parameters and return type
@@ -241,8 +247,6 @@ function expressionDemo() {
     map<string> m = {key: "value"};
     
     // Binary operations
-    // TODO: Fix semantic error - division returns float
-    // int arith = 1 + 2 * 3 - 4 / 2;
     boolean comp = (5 > 3) && (2 < 4);
     int bitwise = (8 & 4) | (2 ^ 1);
     int shift = (1 << 3) >> 1;
