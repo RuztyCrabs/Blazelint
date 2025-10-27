@@ -89,11 +89,6 @@ function control_flow_tests() {
     boolean flag = true;
     int[] numbers = [1, 2, 3, 4, 5];
     string[] names = ["Alice", "Bob", "Charlie"];
-
-    // If statement
-    if (x > 0) {
-        io:println("Positive");
-    }
     // If-else statement
     if (flag) {
         io:println("True branch");

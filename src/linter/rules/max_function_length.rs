@@ -46,6 +46,7 @@ impl Rule for MaxFunctionLength {
             // Remove block comments before counting lines
             let mut without_block_comments = String::new();
             let mut in_block_comment = false;
+            let mut in_line_comment = false;
             let mut chars = function_source.chars().peekable();
 
             while let Some(c) = chars.next() {
@@ -54,9 +55,28 @@ impl Rule for MaxFunctionLength {
                         chars.next(); // consume '/'
                         in_block_comment = false;
                     }
-                } else if c == '/' && chars.peek() == Some(&'*') {
-                    chars.next(); // consume '*'
-                    in_block_comment = true;
+                    continue;
+                }
+
+                if in_line_comment {
+                    if c == '\n' {
+                        in_line_comment = false;
+                        without_block_comments.push('\n');
+                    }
+                    continue;
+                }
+
+                if c == '/' {
+                    if chars.peek() == Some(&'*') {
+                        chars.next();
+                        in_block_comment = true;
+                        continue;
+                    }
+                    if chars.peek() == Some(&'/') {
+                        chars.next();
+                        in_line_comment = true;
+                        continue;
+                    }
                 } else {
                     without_block_comments.push(c);
                 }
@@ -64,9 +84,10 @@ impl Rule for MaxFunctionLength {
 
             let line_count = without_block_comments
                 .lines()
-                .map(str::trim)
-                .filter(|line| !line.starts_with("//"))
-                .filter(|line| !line.is_empty())
+                .filter(|line| {
+                    let trimmed = line.trim();
+                    !trimmed.starts_with("//")
+                })
                 .count();
 
             if line_count > self.max_length {
