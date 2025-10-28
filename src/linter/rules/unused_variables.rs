@@ -8,22 +8,28 @@ use crate::{
 use std::collections::HashMap;
 
 /// A rule that detects unused variables.
+///
+/// This rule traverses the AST, tracks variable declarations and usages,
+/// and emits a linter diagnostic for each variable that is declared but never used.
 pub struct UnusedVariables;
 
 impl Rule for UnusedVariables {
+    /// Returns the name of the rule.
     fn name(&self) -> &'static str {
         "unused-variables"
     }
 
+    /// Returns a description of the rule.
     fn description(&self) -> &'static str {
         "Detects unused variables."
     }
 
+    /// This rule uses validate_ast, so this is a no-op for per-statement validation.
     fn validate(&self, _statement: &Stmt, _source: &str) -> Vec<Diagnostic> {
-        // This rule uses validate_ast, so this is a no-op.
         Vec::new()
     }
 
+    /// Validates the entire AST for unused variables.
     fn validate_ast(&self, ast: &[Stmt], _source: &str) -> Vec<Diagnostic> {
         let mut visitor = UnusedVariableVisitor::new();
         visitor.visit_stmts(ast);
@@ -32,18 +38,25 @@ impl Rule for UnusedVariables {
     }
 }
 
+/// Information about a variable's declaration and usage status.
 #[derive(Debug, Clone)]
 struct VariableInfo {
+    /// The span in the source code where the variable was declared.
     declaration_span: Span,
+    /// Whether the variable was used.
     used: bool,
 }
 
+/// Visitor that traverses the AST to track variable usage and collect diagnostics for unused variables.
 pub struct UnusedVariableVisitor {
+    /// Stack of variable scopes (for block scoping).
     scopes: Vec<HashMap<String, VariableInfo>>,
+    /// Collected diagnostics for unused variables.
     diagnostics: Vec<Diagnostic>,
 }
 
 impl UnusedVariableVisitor {
+    /// Creates a new UnusedVariableVisitor with an initial (global) scope.
     pub fn new() -> Self {
         Self {
             scopes: vec![HashMap::new()],
@@ -51,10 +64,12 @@ impl UnusedVariableVisitor {
         }
     }
 
+    /// Enters a new variable scope (e.g., for a function or block).
     fn enter_scope(&mut self) {
         self.scopes.push(HashMap::new());
     }
 
+    /// Exits the current variable scope, emitting diagnostics for any unused variables.
     fn exit_scope(&mut self) {
         if let Some(scope) = self.scopes.pop() {
             for (name, info) in scope {
@@ -69,6 +84,7 @@ impl UnusedVariableVisitor {
         }
     }
 
+    /// Declares a new variable in the current scope.
     fn declare_variable(&mut self, name: String, span: Span) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(
@@ -81,6 +97,7 @@ impl UnusedVariableVisitor {
         }
     }
 
+    /// Marks a variable as used, searching from innermost to outermost scope.
     fn use_variable(&mut self, name: &str) {
         for scope in self.scopes.iter_mut().rev() {
             if let Some(info) = scope.get_mut(name) {
@@ -90,12 +107,14 @@ impl UnusedVariableVisitor {
         }
     }
 
+    /// Visits a list of statements, tracking variable usage.
     pub fn visit_stmts(&mut self, stmts: &[Stmt]) {
         for stmt in stmts {
             self.visit_stmt(stmt);
         }
     }
 
+    /// Visits a single statement, handling variable declarations, function scopes, and control flow.
     fn visit_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::VarDecl {
@@ -166,6 +185,7 @@ impl UnusedVariableVisitor {
         }
     }
 
+    /// Visits an expression, tracking variable usage recursively.
     fn visit_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Variable { name, .. } => self.use_variable(name),
