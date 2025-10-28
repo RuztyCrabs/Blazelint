@@ -9,10 +9,10 @@ use ast::Stmt;
 use errors::{Diagnostic, DiagnosticKind};
 use lexer::Lexer;
 use linter::{
-    rules::camel_case::CamelCase,
-    rules::constant_case::ConstantCase,
-    rules::line_length::LineLength, // Import the new rule
-    rules::max_function_length::MaxFunctionLength,
+    rules::{
+        camel_case::CamelCase, constant_case::ConstantCase, line_length::LineLength,
+        max_function_length::MaxFunctionLength, unused_variables::UnusedVariables,
+    },
     Rule,
 };
 use parser::Parser;
@@ -149,14 +149,13 @@ fn run_linter(ast: &[Stmt], source: &str, _line_starts: &[usize]) -> Result<(), 
         Box::new(ConstantCase),
         Box::new(LineLength),
         Box::new(MaxFunctionLength::new(None)),
+        Box::new(UnusedVariables),
     ];
 
     let mut diagnostics = Vec::new();
 
-    for stmt in ast {
-        for rule in &rules {
-            diagnostics.extend(rule.validate(stmt, source));
-        }
+    for rule in &rules {
+        diagnostics.extend(rule.validate_ast(ast, source));
     }
 
     if !diagnostics.is_empty() {

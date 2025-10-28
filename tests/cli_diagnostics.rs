@@ -357,7 +357,7 @@ fn linter_reports_constant_case() {
 
 #[test]
 fn linter_accepts_valid_camel_case() {
-    let code = "int myVariable = 42; string userName = \"test\";";
+    let code = "function test() { int myVariable = 42; string userName = \"test\"; io:println(myVariable); io:println(userName); }";
     let output = run_cli(code);
     let out = stdout(&output);
     assert!(!out.contains("linter error: Variable"));
@@ -461,4 +461,14 @@ fn linter_reports_max_function_length() {
     assert!(out
         .contains("linter error: Function \"longFunction\" has 51 lines (exceeds maximum of 50)"));
     assert!(!out.contains("linter error: Function \"shortFunction\""));
+}
+
+#[test]
+fn linter_reports_unused_variable() {
+    let code = include_str!("test-bal-files/unused_variable.bal");
+    println!("{:?}", std::env::current_dir());
+    let output = run_cli(code);
+    assert!(!output.status.success());
+    let out = stdout(&output);
+    assert!(out.contains("linter error: Variable anotherUnused is never used"));
 }
