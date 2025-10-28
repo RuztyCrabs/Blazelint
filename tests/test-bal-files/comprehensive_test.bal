@@ -37,51 +37,65 @@ function variable_declarations() {
     // Map declarations
     map<string> config = {name: "app", version: "1.0"};
     map<int> scores = {math: 90, science: 85};
+
+    io:println(x);
+    io:println(y);
+    io:println(flag);
+    io:println(message);
+    io:println(constant);
+    io:println(name);
+    io:println(numbers);
+    io:println(names);
+    io:println(config);
+    io:println(scores);
 }
 
 function operator_tests() {
     int x = 5;
-    float y = 3.14;
+    float  y = 3.14;
     boolean flag = true;
     int sum = 30;
     int diff = 20;
-
     // Arithmetic operators
-    int sum_op = 10 + 20;
-    int diff_op = 50 - 30;
+    int sumop = 10 + 20;
+    int diffop = 50 - 30;
     int product = 5 * 4;
-    int remainder = 10 % 3;
-    
+    int remainder = 10 % 3; 
     // Comparison operators
     boolean isEqual = x == 5;
     boolean notEqual = y != 0.0;
     boolean greater = sum > diff;
     boolean greaterEqual = x >= 5;
-    boolean lessEqual = y <= 10.0;
-    
+    boolean lessEqual = y <= 10.0; 
     // Logical operators
     boolean andResult = flag && isEqual;
     boolean orResult = (x > 0) || (y < 0.0);
-    boolean notResult = !flag;
-    
+    boolean notResult = !flag;  
     // Bitwise operators
     int bitwiseAnd = 5 & 3;
     int bitwiseOr = 5 | 3;
     int bitwiseXor = 5 ^ 3;
-    int bitwiseNot = ~5;
-    
+    int bitwiseNot = ~5;  
     // Shift operators
     int leftShift = 4 << 2;
     int rightShift = 16 >> 2;
-    int unsignedRightShift = -16 >>> 2;
-    
+    int unsignedRightShift = -16 >>> 2; 
     // Compound assignment
     int counter = 0;
     counter += 5;
     counter -= 2;
-    
     // Ternary operator
     int max = (x > 5) ? x : 10;
+    io:println(sumop); io:println(diffop); io:println(product);
+    io:println(remainder);io:println(notEqual);
+    io:println(greater);io:println(greaterEqual);
+    io:println(lessEqual);io:println(andResult);
+    io:println(orResult);io:println(notResult);
+    io:println(bitwiseAnd);io:println(bitwiseOr);
+    io:println(bitwiseXor);io:println(bitwiseNot);
+    io:println(leftShift);io:println(rightShift);
+    io:println(unsignedRightShift); io:println(counter);
+    io:println(max);
 }
 
 function control_flow_tests() {
@@ -138,23 +152,18 @@ function other_tests() {
     int[] numbers = [1, 2, 3, 4, 5];
     string[] names = ["Alice", "Bob", "Charlie"];
     map<string> config = {name: "app", version: "1.0"};
-
     // Array access
     int firstNumber = numbers[0];
     string firstName = names[1];
-    
     // Map access
-    string? appName = config["name"];
-    
+    string? appName = config["name"]; 
     // Method calls
     names.push("David");
-    int length = names.length();
-    
+    int length = names.length(); 
     // Function calls
     io:println(message);
     io:println(numbers);
-    io:println(names);
-    
+    io:println(names);   
     calculate(10, 20);
     
     // Type casts
@@ -177,6 +186,13 @@ function other_tests() {
     int a = 1;
     int b = 2;
     int c = 3;
+
+    io:println(firstNumber); io:println(firstName); io:println(appName);
+    io:println(length); io:println(floatValue);
+    io:println(greeting); io:println(calculation);
+    io:println(complexCondition);
+    io:println(negative);io:println(positive);
+    io:println(inverted); io:println(a);  io:println(b);io:println(c);
 }
 
 // Function with parameters and return type
@@ -207,15 +223,15 @@ function isPositive(int n) returns boolean {
 
 // Function with string return
 function getGreeting(string name) returns string {
+    io:println(name);
     return "Hello";
 }
 
 // Function with array parameter
 function sumArray(int[] arr) returns int {
     int total = 0;
-    int index = 0;
-    while (index < 10) {
-        index += 1;
+    foreach int x in arr {
+        total += x;
     }
     return total;
 }
@@ -262,5 +278,20 @@ function expressionDemo() {
     // Grouped
     int grouped = (1 + 2) * 3;
     
+    io:println(intLit);
+    io:println(floatLit);
+    io:println(boolLit);
+    io:println(strLit);
+    io:println(arr);
+    io:println(m);
+    io:println(comp);
+    io:println(bitwise);
+    io:println(shift);
+    io:println(neg);
+    io:println(not);
+    io:println(bitnot);
+    io:println(tern);
+    io:println(grouped);
+
     io:println("Expression demo complete");
 }

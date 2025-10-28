@@ -25,33 +25,63 @@ impl Rule for CamelCase {
 
     /// Validates the given statement against the rule.
     ///
-    /// This function checks if the statement is a variable declaration and
-    /// if the variable name is in camelCase.
-    ///
-    /// # Arguments
-    ///
-    /// * `statement` - The statement to validate
-    ///
-    /// # Returns
-    ///
-    /// A vector of diagnostics found in the statement
-    fn validate(&self, statement: &Stmt, _source: &str) -> Vec<Diagnostic> {
-        let mut diagnostics = Vec::new();
+    /// This function is a no-op because this rule uses `validate_ast`.
+    fn validate(&self, _statement: &Stmt, _source: &str) -> Vec<Diagnostic> {
+        Vec::new()
+    }
 
-        if let Stmt::VarDecl {
-            name, name_span, ..
-        } = statement
-        {
-            if !is_camel_case(name) {
-                diagnostics.push(Diagnostic::new(
-                    DiagnosticKind::Linter,
-                    format!("Variable \"{}\" is not in camelCase.", name),
-                    name_span.clone(),
-                ));
-            }
+    fn validate_ast(&self, ast: &[Stmt], _source: &str) -> Vec<Diagnostic> {
+        let mut visitor = CamelCaseVisitor::new();
+        visitor.visit_stmts(ast);
+        visitor.diagnostics
+    }
+}
+
+struct CamelCaseVisitor {
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl CamelCaseVisitor {
+    fn new() -> Self {
+        Self {
+            diagnostics: Vec::new(),
         }
+    }
 
-        diagnostics
+    fn visit_stmts(&mut self, stmts: &[Stmt]) {
+        for stmt in stmts {
+            self.visit_stmt(stmt);
+        }
+    }
+
+    fn visit_stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::VarDecl {
+                name, name_span, ..
+            } => {
+                if !is_camel_case(name) {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Linter,
+                        format!("Variable \"{}\" is not in camelCase.", name),
+                        name_span.clone(),
+                    ));
+                }
+            }
+            Stmt::Function { body, .. } => self.visit_stmts(body),
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.visit_stmts(then_branch);
+                if let Some(else_branch) = else_branch {
+                    self.visit_stmts(else_branch);
+                }
+            }
+            Stmt::While { body, .. } => self.visit_stmts(body),
+            Stmt::Foreach { body, .. } => self.visit_stmts(body),
+            _ => {}
+        }
     }
 }
 
