@@ -14,12 +14,12 @@
 - [Usage](#usage)
 - [Development environment](#development-environment)
 	- [Using GitHub Codespaces](#using-github-codespaces)
-	- [Using VS Code (if you have it installed locally)](#using-vs-code-if-you-have-it-installed-locally)
+	- [Using VS Code ](#using-vs-code-if-you-have-it-installed-locally)
 - [Building](#building)
-	- [Prerequsites (skip if using the dev container)](#prerequsites-skip-if-using-the-dev-container)
+	- [Prerequsites ](#prerequsites-skip-if-using-the-dev-container)
 	- [Steps](#steps)
 - [Debugging](#debugging)
-	- [Prerequsites (skip if using the dev container)](#prerequsites-skip-if-using-the-dev-container-1)
+	- [Prerequsites ](#prerequsites-skip-if-using-the-dev-container-1)
 	- [Steps](#steps-1)
 - [Contributing](#contributing)
 - [TODO](#todo)
@@ -39,9 +39,9 @@ Install the latest published version from [crates.io](https://crates.io/crates/b
 cargo install blazelint
 ```
 
-Pre-build binaries are available for Linux from the [latest GitHub release](https://github.com/RuztyCrabs/Blazelint/releases/latest) and place it in your `$PATH`.
+Pre-build binaries are available for Linux from the [latest GitHub release](https://github.com/RuztyCrabs/Blazelint/releases/latest). 
 
-Windows and MacOS binaries will be added in next release.
+_Windows and MacOS binaries will be added in a later release._
 
 ## Usage
 
@@ -54,7 +54,7 @@ blazelint path/to/file.bal
 > [!NOTE]
 > Use the limited subset document in the [BNF](docs/BNF.md) when defining Ballerina syntax to be linted.
 
-The tool prints the input program, a token stream, the parsed AST, and exits with a non-zero status or emits diagnostics if it detected any.
+The tool prints the input program, a token stream, the parsed AST, and exits or emits diagnostics if there is any and exits with a non-zero status.
 
 Running from a checked-out repository is also supported:
 
@@ -73,17 +73,17 @@ blazelint tests/test.bal
 
 ## Development environment
 
-We provide a pre-configured [Dev Container](https://containers.dev/) that you can use to jump on to developing BlazeLint without installing anything locally. You can skip pre-requisites if you plan to use this. 
+A pre-configured [Dev Container](https://containers.dev/) is available that can be used to investigate, develop or debug the program without installing anything on the host machine.
+
+It can be launched and used fully remotely inside a browser using GitHub codespaces, or locally using Visual Studio Code.
 
 ### Using GitHub Codespaces
-
-Dev Container can be launched and used fully remotely inside a browser using GitHub codespaces:
 
 1. Click **Code → Create codespace** from the GitHub UI.
 2. Wait for the Codespace to provision (first run will take some significant time).
 3. Start Developing!
 
-### Using VS Code (if you have it installed locally)
+### Using Visual Studio Code
 
 1. Install the **Dev Containers** extension.
 2. Clone this repository and open it in VS Code.
@@ -109,30 +109,28 @@ The container comes with:
 ### Steps
 
 1. Create a fork and clone to local:
-
-```bash
-git clone https://github.com/<your-profile-name>/Blazelint.git
-```
+    ```bash
+    git clone https://github.com/<your-profile-name>/Blazelint.git
+    ```
 
 2. `cd` into the directory:
-
-```bash
-cd Blazelint
-```
+    ```bash
+    cd Blazelint
+    ```
 
 3. Build with cargo:
-
-```bash
-cargo build --release
-```
+    ```bash
+    cargo build --release
+    ```
 ## Debugging
 
 ### Prerequsites
 
 - Build requirements stated [here](#building).
-- [VsCode IDE by Microsoft](https://code.visualstudio.com/download)
+- [Visual Studio Code IDE by Microsoft](https://code.visualstudio.com/download)
 - [Rust Analyzer extension by rust-lang.org](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
 - [CodeLLDB extension by Vadim Chugunov](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
+- Ballerina toochain and IDE extension (optional - for testing or writing ballerina codes)
 
 ### Steps
 - You can adjust the `tests/test.bal` file if you need to debug a specific diagnostic.
@@ -140,21 +138,20 @@ cargo build --release
 - Click on **Run and Debug** from the main method or use `ctrl+shift+D` to jump to debug menu.
 
 > [!NOTE]
-> It is possible to debug with any IDE including Neovim, Emacs and etc but we recommend vscode for easier setup. 
+> It is possible to debug with any IDE including Neovim, Emacs and etc but we recommend Visual Studio Code for easier setup. 
 
 ## Contributing
 
-### Changes should be developed and push to following branches based on the area of the feature.
+- Changes should be developed and push to following branches based on the area of the feature.
+    - feature/linter-core: Changes to the linter engine (lexer, parser, semantic analyzer and BNF document.
+    - ci/cd: Changes related to continous integration and deployments.
+    - docs: Changes related to documenation.
 
-- feature/linter-core: Changes to the linter engine (lexer, parser, semantic analyzer and BNF document.
-- ci/cd: Changes related to continous integration and deployments.
-- docs: Changes related to documenation.
+-  Run all formatter, lint, and test checks locally before opening a pull request:
 
-### Run all formatter, lint, and test checks locally before opening a pull request:
-
-```bash
-bash scripts/check.sh
-```
+    ```bash
+    bash scripts/check.sh
+    ```
 
 ## TODO
 
