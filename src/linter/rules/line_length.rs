@@ -35,7 +35,8 @@ impl Rule for LineLength {
         let mut diagnostics = Vec::new();
         let span = statement.span();
 
-        let statement_source = &source[span.start..span.end];
+        let span_end = span.end.min(source.len());
+        let statement_source = &source[span.start..span_end];
 
         for line in statement_source.lines() {
             if line.len() > MAX_LINE_LENGTH {

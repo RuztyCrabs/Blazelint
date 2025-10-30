@@ -13,4 +13,13 @@ pub trait Rule {
 
     /// Validates a given statement.
     fn validate(&self, statement: &Stmt, source: &str) -> Vec<Diagnostic>;
+
+    /// Validates the entire AST.
+    fn validate_ast(&self, ast: &[Stmt], source: &str) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+        for stmt in ast {
+            diagnostics.extend(self.validate(stmt, source));
+        }
+        diagnostics
+    }
 }
