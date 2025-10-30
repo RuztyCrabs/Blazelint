@@ -76,7 +76,7 @@ impl UnusedVariableVisitor {
                 if !info.used && !name.starts_with('_') {
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Linter,
-                        format!("linter error: Variable {} is never used", name),
+                        format!("Variable {} is never used", name),
                         info.declaration_span,
                     ));
                 }
@@ -169,8 +169,7 @@ impl UnusedVariableVisitor {
             } => {
                 self.visit_expr(iterable);
                 self.enter_scope();
-                // We need a span for the variable, but it's not in the AST yet.
-                // For now, let's use the iterable's span.
+                // Skip foreach variables - they're often used just for iteration
                 self.declare_variable(variable.clone(), iterable.span().clone());
                 self.visit_stmts(body);
                 self.exit_scope();
