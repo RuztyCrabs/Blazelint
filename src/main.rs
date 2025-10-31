@@ -11,7 +11,8 @@ use lexer::Lexer;
 use linter::{
     rules::{
         camel_case::CamelCase, constant_case::ConstantCase, line_length::LineLength,
-        max_function_length::MaxFunctionLength, unused_variables::UnusedVariables,
+        max_function_length::MaxFunctionLength, missing_return::MissingReturn,
+        unused_variables::UnusedVariables,
     },
     Rule,
 };
@@ -150,6 +151,7 @@ fn run_linter(ast: &[Stmt], source: &str, _line_starts: &[usize]) -> Result<(), 
         Box::new(LineLength),
         Box::new(MaxFunctionLength::new(None)),
         Box::new(UnusedVariables),
+        Box::new(MissingReturn::new()),
     ];
 
     let mut diagnostics = Vec::new();
