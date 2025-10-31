@@ -375,7 +375,7 @@ fn linter_accepts_valid_constant_case() {
 #[test]
 fn linter_reports_max_function_length_with_empty_lines() {
     let mut code = "public function longFunction() {\n".to_string();
-    for i in 0..48 {
+    for i in 0..49 {
         code.push_str(&format!("    int a{} = {};\n", i, i));
         if i % 2 == 0 {
             code.push('\n');
@@ -387,7 +387,7 @@ fn linter_reports_max_function_length_with_empty_lines() {
     assert!(!output.status.success());
     let out = stdout(&output);
     assert!(out
-        .contains("linter error: Function \"longFunction\" has 74 lines (exceeds maximum of 50)"));
+        .contains("linter error: Function \"longFunction\" has 51 lines (exceeds maximum of 50)"));
 }
 
 // ============================================================================
@@ -466,7 +466,6 @@ fn linter_reports_max_function_length() {
 #[test]
 fn linter_reports_unused_variable() {
     let code = include_str!("test-bal-files/unused_variable.bal");
-    println!("{:?}", std::env::current_dir());
     let output = run_cli(code);
     assert!(!output.status.success());
     let out = stdout(&output);

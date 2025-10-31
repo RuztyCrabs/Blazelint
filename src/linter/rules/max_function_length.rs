@@ -41,7 +41,8 @@ impl Rule for MaxFunctionLength {
                 return diagnostics;
             }
 
-            let function_source = &source[span.start..span.end];
+            let span_end = span.end.min(source.len());
+            let function_source = &source[span.start..span_end];
 
             // Remove block comments before counting lines
             let mut without_block_comments = String::new();
@@ -71,11 +72,13 @@ impl Rule for MaxFunctionLength {
                         chars.next();
                         in_block_comment = true;
                         continue;
-                    }
-                    if chars.peek() == Some(&'/') {
+                    } else if chars.peek() == Some(&'/') {
                         chars.next();
                         in_line_comment = true;
                         continue;
+                    } else {
+                        // Preserve '/' when not starting a comment
+                        without_block_comments.push(c);
                     }
                 } else {
                     without_block_comments.push(c);
@@ -86,7 +89,7 @@ impl Rule for MaxFunctionLength {
                 .lines()
                 .filter(|line| {
                     let trimmed = line.trim();
-                    !trimmed.starts_with("//")
+                    !trimmed.is_empty() && !trimmed.starts_with("//")
                 })
                 .count();
 
