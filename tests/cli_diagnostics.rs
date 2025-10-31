@@ -471,3 +471,13 @@ fn linter_reports_unused_variable() {
     let out = stdout(&output);
     assert!(out.contains("linter error: Variable anotherUnused is never used"));
 }
+
+#[test]
+fn linter_reports_missing_return() {
+    let code = include_str!("test-bal-files/missing_return.bal");
+    let output = run_cli(code);
+    assert!(!output.status.success());
+    let out = stdout(&output);
+    assert!(out
+        .contains("linter error: Function 'getValue' might not return a value on all code paths."));
+}
