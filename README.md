@@ -130,7 +130,7 @@ The container comes with:
 - [Visual Studio Code IDE by Microsoft](https://code.visualstudio.com/download)
 - [Rust Analyzer extension by rust-lang.org](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
 - [CodeLLDB extension by Vadim Chugunov](https://marketplace.visualstudio.com/items?itemName=vadimcn.vscode-lldb)
-- Ballerina toochain and IDE extension (optional - for testing or writing ballerina codes)
+- Ballerina toolchain and IDE extension (optional - for testing or writing ballerina codes)
 
 ### Steps
 - You can adjust the `tests/test.bal` file if you need to debug a specific diagnostic.
