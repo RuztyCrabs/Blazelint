@@ -16,10 +16,10 @@
 	- [Using GitHub Codespaces](#using-github-codespaces)
 	- [Using VS Code ](#using-vs-code-if-you-have-it-installed-locally)
 - [Building](#building)
-	- [Prerequsites ](#prerequsites-skip-if-using-the-dev-container)
+	- [Prerequisites ](#prerequisites-skip-if-using-the-dev-container)
 	- [Steps](#steps)
 - [Debugging](#debugging)
-	- [Prerequsites ](#prerequsites-skip-if-using-the-dev-container-1)
+	- [Prerequisites ](#prerequisites-skip-if-using-the-dev-container-1)
 	- [Steps](#steps-1)
 - [Contributing](#contributing)
 - [TODO](#todo)
@@ -101,7 +101,7 @@ The container comes with:
  
 ## Building
 
-### Prerequsites
+### Prerequisites
 
 - Git 2.51.0 or newer
 - Rust Toolchain 1.86.0 or newer [(Get it here)](https://rust-lang.org/tools/install/)
@@ -124,7 +124,7 @@ The container comes with:
     ```
 ## Debugging
 
-### Prerequsites
+### Prerequisites
 
 - Build requirements stated [here](#building).
 - [Visual Studio Code IDE by Microsoft](https://code.visualstudio.com/download)
