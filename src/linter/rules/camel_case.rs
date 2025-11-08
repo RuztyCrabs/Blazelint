@@ -1,18 +1,16 @@
-//! Rule to enforce camelCase for variable names.
-
 use crate::{
     ast::Stmt,
-    errors::{Diagnostic, DiagnosticKind},
-    linter::Rule,
+    errors::{Diagnostic, DiagnosticKind, Severity},
+    linter::registry::LintRule,
 };
 
 /// A rule that enforces variable names to be in camelCase.
 ///
 /// This rule checks for variable declarations and reports a diagnostic
 /// if the variable name is not in camelCase.
-pub struct CamelCase;
+pub struct CamelCaseRule;
 
-impl Rule for CamelCase {
+impl LintRule for CamelCaseRule {
     /// Returns the name of the rule.
     fn name(&self) -> &'static str {
         "camel_case"
@@ -23,65 +21,72 @@ impl Rule for CamelCase {
         "Variables should be in camelCase."
     }
 
-    /// Validates the given statement against the rule.
-    ///
-    /// This function is a no-op because this rule uses `validate_ast`.
-    fn validate(&self, _statement: &Stmt, _source: &str) -> Vec<Diagnostic> {
-        Vec::new()
+    /// Returns the severity of the rule.
+    fn severity(&self) -> Severity {
+        Severity::Info
     }
 
-    fn validate_ast(&self, ast: &[Stmt], _source: &str) -> Vec<Diagnostic> {
-        let mut visitor = CamelCaseVisitor::new();
-        visitor.visit_stmts(ast);
-        visitor.diagnostics
+    /// Checks the given abstract syntax tree (AST) for violations of the rule.
+    fn check(&self, ast: &[Stmt], _file_path: &str, source: &str) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+        for stmt in ast {
+            check_and_enforce_camel_case(stmt, &mut diagnostics, source, self.severity());
+        }
+        diagnostics
     }
 }
 
-struct CamelCaseVisitor {
-    diagnostics: Vec<Diagnostic>,
-}
-
-impl CamelCaseVisitor {
-    fn new() -> Self {
-        Self {
-            diagnostics: Vec::new(),
+/// Recursively checks for variable declarations and enforces camelCase.
+#[allow(clippy::only_used_in_recursion)]
+fn check_and_enforce_camel_case(
+    stmt: &Stmt,
+    diagnostics: &mut Vec<Diagnostic>,
+    source: &str, // Reverted to source: &str
+    severity: Severity,
+) {
+    match stmt {
+        Stmt::VarDecl {
+            name, name_span, ..
+        } => {
+            if !is_camel_case(name) {
+                diagnostics.push(Diagnostic::new_with_severity(
+                    DiagnosticKind::Linter,
+                    severity,
+                    format!("Variable \"{}\" is not in camelCase.", name),
+                    name_span.clone(),
+                ));
+            }
         }
-    }
-
-    fn visit_stmts(&mut self, stmts: &[Stmt]) {
-        for stmt in stmts {
-            self.visit_stmt(stmt);
+        Stmt::Function { body, .. } => {
+            for s in body {
+                check_and_enforce_camel_case(s, diagnostics, source, severity);
+            }
         }
-    }
-
-    fn visit_stmt(&mut self, stmt: &Stmt) {
-        match stmt {
-            Stmt::VarDecl {
-                name, name_span, ..
-            } => {
-                if !is_camel_case(name) {
-                    self.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Linter,
-                        format!("Variable \"{}\" is not in camelCase.", name),
-                        name_span.clone(),
-                    ));
+        Stmt::If {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            for s in then_branch {
+                check_and_enforce_camel_case(s, diagnostics, source, severity);
+            }
+            if let Some(else_branch) = else_branch {
+                for s in else_branch {
+                    check_and_enforce_camel_case(s, diagnostics, source, severity);
                 }
             }
-            Stmt::Function { body, .. } => self.visit_stmts(body),
-            Stmt::If {
-                then_branch,
-                else_branch,
-                ..
-            } => {
-                self.visit_stmts(then_branch);
-                if let Some(else_branch) = else_branch {
-                    self.visit_stmts(else_branch);
-                }
-            }
-            Stmt::While { body, .. } => self.visit_stmts(body),
-            Stmt::Foreach { body, .. } => self.visit_stmts(body),
-            _ => {}
         }
+        Stmt::While { body, .. } => {
+            for s in body {
+                check_and_enforce_camel_case(s, diagnostics, source, severity);
+            }
+        }
+        Stmt::Foreach { body, .. } => {
+            for s in body {
+                check_and_enforce_camel_case(s, diagnostics, source, severity);
+            }
+        }
+        _ => {}
     }
 }
 

@@ -193,6 +193,8 @@ function other_tests() {
     io:println(complexCondition);
     io:println(negative);io:println(positive);
     io:println(inverted); io:println(a);  io:println(b);io:println(c);
+    io:println(intValue);
+    io:println(config);
 }
 
 // Function with parameters and return type

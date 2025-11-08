@@ -1,13 +1,13 @@
-use crate::ast::Stmt;
-use crate::errors::Diagnostic;
-use crate::linter::Rule;
-use crate::semantic;
+use crate::{
+    ast::Stmt,
+    errors::{Diagnostic, DiagnosticKind, Severity},
+    linter::registry::LintRule,
+};
 
 /// Linter rule that checks for functions with non-void return types that might not return a value on all code paths.
-#[derive(Debug, Default)]
-pub struct MissingReturn;
+pub struct MissingReturnRule;
 
-impl MissingReturn {
+impl MissingReturnRule {
     /// Creates a new `MissingReturn` rule.
     pub fn new() -> Self {
         Self
@@ -49,7 +49,7 @@ impl MissingReturn {
     }
 }
 
-impl Rule for MissingReturn {
+impl LintRule for MissingReturnRule {
     fn name(&self) -> &'static str {
         "missing_return"
     }
@@ -58,34 +58,30 @@ impl Rule for MissingReturn {
         "Detects functions with non-void return types that might not return a value on all code paths."
     }
 
-    fn validate(&self, _statement: &Stmt, _source: &str) -> Vec<Diagnostic> {
-        // This rule is validated at the AST level, so this method is empty.
-        vec![]
+    fn severity(&self) -> Severity {
+        Severity::Error
     }
 
-    fn validate_ast(&self, ast: &[Stmt], _source: &str) -> Vec<Diagnostic> {
+    fn check(&self, ast: &[Stmt], _file_path: &str, _source: &str) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
-        if semantic::analyze(ast).is_err() {
-            // Semantic errors exist, don't run this rule
-            return diagnostics;
-        }
-
         for stmt in ast {
             if let Stmt::Function {
                 name,
                 return_type,
                 body,
+                span,
                 ..
             } = stmt
             {
                 if return_type.is_some() && !self.check_returns_in_block(body) {
-                    diagnostics.push(Diagnostic::new(
-                        crate::errors::DiagnosticKind::Linter,
+                    diagnostics.push(Diagnostic::new_with_severity(
+                        DiagnosticKind::Linter,
+                        self.severity(),
                         format!(
                             "Function '{}' might not return a value on all code paths.",
                             name
                         ),
-                        stmt.span().clone(),
+                        span.clone(),
                     ));
                 }
             }

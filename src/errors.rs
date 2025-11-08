@@ -9,6 +9,14 @@ use std::ops::Range;
 /// Byte range within the original source file.
 pub type Span = Range<usize>;
 
+/// Represents the severity level of a diagnostic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    Error,
+    Warning,
+    Info,
+}
+
 /// General classification for diagnostics emitted by the linter.
 #[derive(Debug, Clone, Copy)]
 pub enum DiagnosticKind {
@@ -18,24 +26,58 @@ pub enum DiagnosticKind {
     Linter,
 }
 
+/// Represents a position in the source code.
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub struct Position {
+    pub line: usize,
+    pub column: usize,
+}
+
+impl Position {
+    pub fn new(line: usize, column: usize) -> Self {
+        Self { line, column }
+    }
+}
+
 /// Structured diagnostic message produced by either the lexer or parser.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub kind: DiagnosticKind,
+    pub severity: Severity, // New field for severity
     pub message: String,
     pub span: Span,
     pub notes: Vec<String>,
+    pub position: Option<Position>,
 }
 
 impl Diagnostic {
-    /// Creates a new diagnostic with the provided message and span.
+    /// Creates a new diagnostic with the provided message and span, defaulting to Error severity.
     pub fn new(kind: DiagnosticKind, message: impl Into<String>, span: Span) -> Self {
         Self {
             kind,
+            severity: Severity::Error, // Default to Error
             message: message.into(),
             span,
             notes: Vec::new(),
+            position: None,
+        }
+    }
+
+    /// Creates a new diagnostic with the provided message, span, and explicit severity.
+    pub fn new_with_severity(
+        kind: DiagnosticKind,
+        severity: Severity,
+        message: impl Into<String>,
+        span: Span,
+    ) -> Self {
+        Self {
+            kind,
+            severity,
+            message: message.into(),
+            span,
+            notes: Vec::new(),
+            position: None,
         }
     }
 
@@ -65,7 +107,7 @@ impl LexError {
 
 impl From<LexError> for Diagnostic {
     fn from(err: LexError) -> Self {
-        Diagnostic::new(DiagnosticKind::Lex, err.message, err.span)
+        Diagnostic::new_with_severity(DiagnosticKind::Lex, Severity::Error, err.message, err.span)
     }
 }
 
@@ -91,7 +133,12 @@ impl ParseError {
 
 impl From<ParseError> for Diagnostic {
     fn from(err: ParseError) -> Self {
-        let mut diagnostic = Diagnostic::new(DiagnosticKind::Parse, err.message, err.span);
+        let mut diagnostic = Diagnostic::new_with_severity(
+            DiagnosticKind::Parse,
+            Severity::Error,
+            err.message,
+            err.span,
+        );
         if let Some(expected) = err.expected {
             diagnostic = diagnostic.with_note(format!("expected: {expected}"));
         }

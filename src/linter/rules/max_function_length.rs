@@ -2,109 +2,58 @@
 
 use crate::{
     ast::Stmt,
-    errors::{Diagnostic, DiagnosticKind},
-    linter::Rule,
+    errors::{Diagnostic, DiagnosticKind, Severity},
+    linter::registry::LintRule,
 };
 
 const DEFAULT_MAX_FUNCTION_LENGTH: usize = 50;
 
 /// A rule that enforces a maximum function length.
-pub struct MaxFunctionLength {
+pub struct MaxFunctionLengthRule {
     max_length: usize,
 }
 
-impl MaxFunctionLength {
-    pub fn new(max_length: Option<usize>) -> Self {
+impl MaxFunctionLengthRule {
+    pub fn new() -> Self {
         Self {
-            max_length: max_length.unwrap_or(DEFAULT_MAX_FUNCTION_LENGTH),
+            max_length: DEFAULT_MAX_FUNCTION_LENGTH,
         }
     }
 }
 
-impl Rule for MaxFunctionLength {
+impl LintRule for MaxFunctionLengthRule {
     fn name(&self) -> &'static str {
-        "max-function-length"
+        "max_function_length"
     }
 
     fn description(&self) -> &'static str {
         "Enforces a maximum function length."
     }
 
-    fn validate(&self, statement: &Stmt, source: &str) -> Vec<Diagnostic> {
+    fn severity(&self) -> Severity {
+        Severity::Warning
+    }
+
+    fn check(&self, ast: &[Stmt], _file_path: &str, source: &str) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
-
-        if let Stmt::Function {
-            body, name, span, ..
-        } = statement
-        {
-            if body.is_empty() {
-                return diagnostics;
-            }
-
-            let span_end = span.end.min(source.len());
-            let function_source = &source[span.start..span_end];
-
-            // Remove block comments before counting lines
-            let mut without_block_comments = String::new();
-            let mut in_block_comment = false;
-            let mut in_line_comment = false;
-            let mut chars = function_source.chars().peekable();
-
-            while let Some(c) = chars.next() {
-                if in_block_comment {
-                    if c == '*' && chars.peek() == Some(&'/') {
-                        chars.next(); // consume '/'
-                        in_block_comment = false;
-                    }
-                    continue;
+        for stmt in ast {
+            if let Stmt::Function { name, span, .. } = stmt {
+                // Count the number of lines in the function source
+                let function_source = &source[span.start..span.end];
+                let line_count = function_source.lines().count();
+                if line_count > self.max_length {
+                    diagnostics.push(Diagnostic::new_with_severity(
+                        DiagnosticKind::Linter,
+                        self.severity(),
+                        format!(
+                            "Function \"{}\" has {} lines (exceeds maximum of {})",
+                            name, line_count, self.max_length
+                        ),
+                        span.clone(),
+                    ));
                 }
-
-                if in_line_comment {
-                    if c == '\n' {
-                        in_line_comment = false;
-                        without_block_comments.push('\n');
-                    }
-                    continue;
-                }
-
-                if c == '/' {
-                    if chars.peek() == Some(&'*') {
-                        chars.next();
-                        in_block_comment = true;
-                        continue;
-                    } else if chars.peek() == Some(&'/') {
-                        chars.next();
-                        in_line_comment = true;
-                        continue;
-                    } else {
-                        // Preserve '/' when not starting a comment
-                        without_block_comments.push(c);
-                    }
-                } else {
-                    without_block_comments.push(c);
-                }
-            }
-
-            let line_count = without_block_comments
-                .lines()
-                .filter(|line| {
-                    let trimmed = line.trim();
-                    !trimmed.is_empty() && !trimmed.starts_with("//")
-                })
-                .count();
-
-            if line_count > self.max_length {
-                diagnostics.push(Diagnostic::new(
-                    DiagnosticKind::Linter,
-                    format!(
-                        "Function \"{}\" has {} lines (exceeds maximum of {})",
-                        name, line_count, self.max_length
-                    ),
-                    span.clone(),
-                ));
             }
         }
-
         diagnostics
     }
 }

@@ -2,8 +2,8 @@
 
 use crate::{
     ast::{Expr, Stmt},
-    errors::{Diagnostic, DiagnosticKind, Span},
-    linter::Rule,
+    errors::{Diagnostic, DiagnosticKind, Position, Severity},
+    linter::registry::LintRule,
 };
 use std::collections::HashMap;
 
@@ -11,12 +11,12 @@ use std::collections::HashMap;
 ///
 /// This rule traverses the AST, tracks variable declarations and usages,
 /// and emits a linter diagnostic for each variable that is declared but never used.
-pub struct UnusedVariables;
+pub struct UnusedVariablesRule;
 
-impl Rule for UnusedVariables {
+impl LintRule for UnusedVariablesRule {
     /// Returns the name of the rule.
     fn name(&self) -> &'static str {
-        "unused-variables"
+        "unused_variables"
     }
 
     /// Returns a description of the rule.
@@ -24,14 +24,14 @@ impl Rule for UnusedVariables {
         "Detects unused variables."
     }
 
-    /// This rule uses validate_ast, so this is a no-op for per-statement validation.
-    fn validate(&self, _statement: &Stmt, _source: &str) -> Vec<Diagnostic> {
-        Vec::new()
+    /// Returns the severity of the rule.
+    fn severity(&self) -> Severity {
+        Severity::Error
     }
 
     /// Validates the entire AST for unused variables.
-    fn validate_ast(&self, ast: &[Stmt], _source: &str) -> Vec<Diagnostic> {
-        let mut visitor = UnusedVariableVisitor::new();
+    fn check(&self, ast: &[Stmt], _file_path: &str, source: &str) -> Vec<Diagnostic> {
+        let mut visitor = UnusedVariableVisitor::new(source, self.severity());
         visitor.visit_stmts(ast);
         visitor.exit_scope(); // Exit the global scope
         visitor.diagnostics
@@ -41,26 +41,30 @@ impl Rule for UnusedVariables {
 /// Information about a variable's declaration and usage status.
 #[derive(Debug, Clone)]
 struct VariableInfo {
-    /// The span in the source code where the variable was declared.
-    declaration_span: Span,
+    /// The position in the source code where the variable was declared.
+    declaration_pos: Position,
     /// Whether the variable was used.
     used: bool,
 }
 
 /// Visitor that traverses the AST to track variable usage and collect diagnostics for unused variables.
-pub struct UnusedVariableVisitor {
+pub struct UnusedVariableVisitor<'a> {
     /// Stack of variable scopes (for block scoping).
     scopes: Vec<HashMap<String, VariableInfo>>,
     /// Collected diagnostics for unused variables.
     diagnostics: Vec<Diagnostic>,
+    source: &'a str,
+    severity: Severity,
 }
 
-impl UnusedVariableVisitor {
+impl<'a> UnusedVariableVisitor<'a> {
     /// Creates a new UnusedVariableVisitor with an initial (global) scope.
-    pub fn new() -> Self {
+    pub fn new(source: &'a str, severity: Severity) -> Self {
         Self {
             scopes: vec![HashMap::new()],
             diagnostics: Vec::new(),
+            source,
+            severity,
         }
     }
 
@@ -74,10 +78,11 @@ impl UnusedVariableVisitor {
         if let Some(scope) = self.scopes.pop() {
             for (name, info) in scope {
                 if !info.used && !name.starts_with('_') {
-                    self.diagnostics.push(Diagnostic::new(
+                    self.diagnostics.push(Diagnostic::new_with_severity(
                         DiagnosticKind::Linter,
+                        self.severity,
                         format!("Variable {} is never used", name),
-                        info.declaration_span,
+                        info.declaration_pos.line..info.declaration_pos.column, // Convert Position to Span
                     ));
                 }
             }
@@ -85,12 +90,12 @@ impl UnusedVariableVisitor {
     }
 
     /// Declares a new variable in the current scope.
-    fn declare_variable(&mut self, name: String, span: Span) {
+    fn declare_variable(&mut self, name: String, pos: Position) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(
                 name,
                 VariableInfo {
-                    declaration_span: span,
+                    declaration_pos: pos,
                     used: false,
                 },
             );
@@ -126,13 +131,14 @@ impl UnusedVariableVisitor {
                 if let Some(init) = initializer {
                     self.visit_expr(init);
                 }
-                self.declare_variable(name.clone(), name_span.clone());
+                let pos = crate::utils::get_line_and_column(name_span.start, self.source);
+                self.declare_variable(name.clone(), pos);
             }
             Stmt::Function { body, params, .. } => {
                 self.enter_scope();
                 for (name, _) in params {
-                    // No span for param name, so use a dummy span or skip
-                    self.declare_variable(name.clone(), Span { start: 0, end: 0 });
+                    // FIXME: We don't have a span for the parameter name
+                    self.declare_variable(name.clone(), Position::new(0, 0));
                 }
                 self.visit_stmts(body);
                 self.exit_scope();
@@ -165,12 +171,13 @@ impl UnusedVariableVisitor {
                 variable,
                 iterable,
                 body,
+                span,
                 ..
             } => {
                 self.visit_expr(iterable);
                 self.enter_scope();
-                // Skip foreach variables - they're often used just for iteration
-                self.declare_variable(variable.clone(), iterable.span().clone());
+                let pos = crate::utils::get_line_and_column(span.start, self.source);
+                self.declare_variable(variable.clone(), pos);
                 self.visit_stmts(body);
                 self.exit_scope();
             }
@@ -178,8 +185,6 @@ impl UnusedVariableVisitor {
             Stmt::Return {
                 value: Some(val), ..
             } => self.visit_expr(val),
-            Stmt::Panic { value, .. } => self.visit_expr(value),
-            // Other statements don't introduce scopes or variables
             _ => {}
         }
     }
@@ -206,50 +211,7 @@ impl UnusedVariableVisitor {
                 self.use_variable(name);
                 self.visit_expr(value);
             }
-            Expr::MemberAccess { object, member, .. } => {
-                self.visit_expr(object);
-                self.visit_expr(member);
-            }
-            Expr::MethodCall {
-                object, arguments, ..
-            } => {
-                self.visit_expr(object);
-                for arg in arguments {
-                    self.visit_expr(arg);
-                }
-            }
-            Expr::ArrayLiteral { elements, .. } => {
-                for element in elements {
-                    self.visit_expr(element);
-                }
-            }
-            Expr::MapLiteral { entries, .. } => {
-                for (_, value) in entries {
-                    self.visit_expr(value);
-                }
-            }
-            Expr::Ternary {
-                condition,
-                true_expr,
-                false_expr,
-                ..
-            } => {
-                self.visit_expr(condition);
-                self.visit_expr(true_expr);
-                self.visit_expr(false_expr);
-            }
-            Expr::Elvis { expr, default, .. } => {
-                self.visit_expr(expr);
-                self.visit_expr(default);
-            }
-            Expr::Range { start, end, .. } => {
-                self.visit_expr(start);
-                self.visit_expr(end);
-            }
-            Expr::Cast { expr, .. } => self.visit_expr(expr),
-            Expr::Literal { .. } => {
-                // Literals don't contain variables
-            }
+            _ => {}
         }
     }
 }

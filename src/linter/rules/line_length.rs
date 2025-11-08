@@ -1,16 +1,15 @@
 use crate::{
     ast::Stmt,
-    errors::{Diagnostic, DiagnosticKind},
-    linter::Rule,
+    errors::{Diagnostic, DiagnosticKind, Severity},
+    linter::registry::LintRule,
 };
 
 const MAX_LINE_LENGTH: usize = 120;
 
 /// A linting rule to enforce that lines do not exceed a maximum length.
-#[derive(Debug, Clone)]
-pub struct LineLength;
+pub struct LineLengthRule;
 
-impl Rule for LineLength {
+impl LintRule for LineLengthRule {
     /// Returns the name of the rule.
     fn name(&self) -> &'static str {
         "line_length"
@@ -21,35 +20,27 @@ impl Rule for LineLength {
         "Lines should not exceed 120 characters."
     }
 
-    /// Validates a given statement to ensure that it does not exceed the maximum line length.
-    ///
-    /// # Arguments
-    ///
-    /// * `statement` - The statement to validate.
-    /// * `source` - The source code of the file being linted.
-    ///
-    /// # Returns
-    ///
-    /// A vector of diagnostics if the statement exceeds the maximum line length.
-    fn validate(&self, statement: &Stmt, source: &str) -> Vec<Diagnostic> {
+    /// Returns the severity of the rule.
+    fn severity(&self) -> Severity {
+        Severity::Warning
+    }
+
+    /// Checks the given source code for lines that exceed the maximum length.
+    fn check(&self, _ast: &[Stmt], _file_path: &str, source: &str) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
-        let span = statement.span();
-
-        let span_end = span.end.min(source.len());
-        let statement_source = &source[span.start..span_end];
-
-        for line in statement_source.lines() {
+        let mut offset = 0;
+        for line in source.lines() {
             if line.len() > MAX_LINE_LENGTH {
-                diagnostics.push(Diagnostic::new(
+                let pos = crate::utils::get_line_and_column(offset, source);
+                diagnostics.push(Diagnostic::new_with_severity(
                     DiagnosticKind::Linter,
+                    self.severity(),
                     self.description().to_string(),
-                    span.clone(),
+                    pos.line..pos.column, // Span for the diagnostic
                 ));
-                // We only want to report the error once per statement
-                break;
             }
+            offset += line.len() + 1;
         }
-
         diagnostics
     }
 }
