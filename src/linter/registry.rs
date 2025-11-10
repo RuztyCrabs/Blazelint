@@ -1,9 +1,10 @@
 use crate::ast::Stmt;
 pub use crate::errors::{Diagnostic, Severity}; // Import Severity from errors.rs
+use std::collections::HashSet;
 
 /// Common trait for all linting rules.
 #[allow(dead_code)]
-pub trait LintRule {
+pub trait LintRule: Send + Sync {
     /// Returns a unique name for the rule.
     fn name(&self) -> &'static str;
 
@@ -23,7 +24,7 @@ pub trait LintRule {
 #[allow(dead_code)]
 pub struct LintRuleRegistry {
     rules: Vec<Box<dyn LintRule>>,
-    enabled_rules: Vec<String>,
+    enabled_rules: HashSet<String>,
 }
 
 #[allow(dead_code)]
@@ -32,33 +33,31 @@ impl LintRuleRegistry {
     pub fn new() -> Self {
         Self {
             rules: Vec::new(),
-            enabled_rules: Vec::new(),
+            enabled_rules: HashSet::new(),
         }
     }
 
     /// Registers a new linting rule.
     pub fn register(&mut self, rule: Box<dyn LintRule>) {
-        self.enabled_rules.push(rule.name().to_string()); // Enable all rules by default
+        self.enabled_rules.insert(rule.name().to_string()); // Enable all rules by default
         self.rules.push(rule);
     }
 
     /// Enables a specific rule.
     pub fn enable_rule(&mut self, name: &str) {
-        if !self.enabled_rules.contains(&name.to_string()) {
-            self.enabled_rules.push(name.to_string());
-        }
+        self.enabled_rules.insert(name.to_string());
     }
 
     /// Disables a specific rule.
     pub fn disable_rule(&mut self, name: &str) {
-        self.enabled_rules.retain(|r| r != name);
+        self.enabled_rules.remove(name);
     }
 
     /// Runs all enabled linting rules on the given AST.
     pub fn run_all(&self, ast: &[Stmt], file_path: &str, source: &str) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         for rule in &self.rules {
-            if self.enabled_rules.contains(&rule.name().to_string()) {
+            if self.enabled_rules.contains(rule.name()) {
                 diagnostics.extend(rule.check(ast, file_path, source));
             }
         }

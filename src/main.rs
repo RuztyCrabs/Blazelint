@@ -14,11 +14,23 @@ use linter::rules::{
     CamelCaseRule, ConstantCaseRule, LineLengthRule, MaxFunctionLengthRule, MissingReturnRule,
     UnusedVariablesRule,
 };
+use once_cell::sync::Lazy;
 use parser::Parser;
 use semantic::analyze;
 use std::env;
 use std::fs;
 use std::process;
+
+static LINT_REGISTRY: Lazy<LintRuleRegistry> = Lazy::new(|| {
+    let mut registry = LintRuleRegistry::new();
+    registry.register(Box::new(CamelCaseRule));
+    registry.register(Box::new(ConstantCaseRule));
+    registry.register(Box::new(LineLengthRule));
+    registry.register(Box::new(MaxFunctionLengthRule::new()));
+    registry.register(Box::new(MissingReturnRule::new()));
+    registry.register(Box::new(UnusedVariablesRule));
+    registry
+});
 
 /// Main entrypoint of the Blazelint linter.
 ///
@@ -54,7 +66,7 @@ fn main() {
         }
         print_ast(&ast);
         // Run linter rules even if there are errors (to catch style issues)
-        all_diagnostics.extend(run_linter(&ast, file_path, &input_code));
+        all_diagnostics.extend(run_linter(&LINT_REGISTRY, &ast, file_path, &input_code));
     }
     // Display all collected diagnostics
     if !all_diagnostics.is_empty() {
@@ -130,14 +142,12 @@ fn print_ast(ast: &[Stmt]) {
 /// * `ast` - A slice of `Stmt` representing the AST to be linted.
 /// * `file_path` - The path to the file being linted.
 /// * `source` - The source code string, used for displaying diagnostic messages.
-fn run_linter(ast: &[Stmt], file_path: &str, source: &str) -> Vec<Diagnostic> {
-    let mut registry = LintRuleRegistry::new();
-    registry.register(Box::new(CamelCaseRule));
-    registry.register(Box::new(ConstantCaseRule));
-    registry.register(Box::new(LineLengthRule));
-    registry.register(Box::new(MaxFunctionLengthRule::new()));
-    registry.register(Box::new(MissingReturnRule::new()));
-    registry.register(Box::new(UnusedVariablesRule));
+fn run_linter(
+    registry: &LintRuleRegistry,
+    ast: &[Stmt],
+    file_path: &str,
+    source: &str,
+) -> Vec<Diagnostic> {
     registry.run_all(ast, file_path, source)
 }
 
