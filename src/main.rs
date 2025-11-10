@@ -48,7 +48,7 @@ fn main() {
     let tokens = match lex_input(&input_code) {
         Ok(tokens) => tokens,
         Err(diagnostics) => {
-            print_diagnostics(&input_code, &diagnostics);
+            print_diagnostics(file_path, &input_code, &diagnostics);
             // If lexing fails, it's always a critical error
             process::exit(1);
         }
@@ -70,7 +70,7 @@ fn main() {
     }
     // Display all collected diagnostics
     if !all_diagnostics.is_empty() {
-        print_diagnostics(&input_code, &all_diagnostics);
+        print_diagnostics(file_path, &input_code, &all_diagnostics);
 
         // Exit with error code if any diagnostic has Severity::Error
         if all_diagnostics
@@ -151,7 +151,7 @@ fn run_linter(
     registry.run_all(ast, file_path, source)
 }
 
-fn print_diagnostics(source: &str, diagnostics: &[Diagnostic]) {
+fn print_diagnostics(file_path: &str, source: &str, diagnostics: &[Diagnostic]) {
     for diag in diagnostics {
         let severity_str = match diag.severity {
             Severity::Error => "Error",
@@ -160,10 +160,10 @@ fn print_diagnostics(source: &str, diagnostics: &[Diagnostic]) {
         };
         println!("{}: {}", severity_str, diag.message);
         if let Some(pos) = diag.position {
-            println!("  --> {}:{}:{}", pos.line, pos.column, diag.message);
+            println!("  --> {}:{}:{}", file_path, pos.line, pos.column);
         } else {
             let pos = crate::utils::get_line_and_column(diag.span.start, source);
-            println!("  --> {}:{}:{}", pos.line, pos.column, diag.message);
+            println!("  --> {}:{}:{}", file_path, pos.line, pos.column);
         }
         for note in &diag.notes {
             println!("note: {}", note);
