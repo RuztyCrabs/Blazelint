@@ -1,5 +1,6 @@
 use crate::{
     ast::Stmt,
+    config::Config,
     errors::{Diagnostic, DiagnosticKind, Severity},
     linter::registry::LintRule,
 };
@@ -13,7 +14,7 @@ pub struct CamelCaseRule;
 impl LintRule for CamelCaseRule {
     /// Returns the name of the rule.
     fn name(&self) -> &'static str {
-        "camel_case"
+        "camel-case"
     }
 
     /// Returns a description of the rule.
@@ -21,16 +22,18 @@ impl LintRule for CamelCaseRule {
         "Variables should be in camelCase."
     }
 
-    /// Returns the severity of the rule.
-    fn severity(&self) -> Severity {
-        Severity::Info
-    }
-
     /// Checks the given abstract syntax tree (AST) for violations of the rule.
-    fn check(&self, ast: &[Stmt], _file_path: &str, source: &str) -> Vec<Diagnostic> {
+    fn check(
+        &self,
+        ast: &[Stmt],
+        _file_path: &str,
+        source: &str,
+        config: &Config,
+    ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
+        let severity = self.severity(config);
         for stmt in ast {
-            check_and_enforce_camel_case(stmt, &mut diagnostics, source, self.severity());
+            check_and_enforce_camel_case(stmt, &mut diagnostics, source, severity);
         }
         diagnostics
     }

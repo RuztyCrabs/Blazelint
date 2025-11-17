@@ -1,4 +1,5 @@
 use crate::ast::Stmt;
+use crate::config::{Config, RuleSeverity};
 pub use crate::errors::{Diagnostic, Severity}; // Import Severity from errors.rs
 use std::collections::HashSet;
 
@@ -12,12 +13,22 @@ pub trait LintRule: Send + Sync {
     fn description(&self) -> &'static str;
 
     /// Returns the severity of the rule.
-    fn severity(&self) -> Severity {
-        Severity::Warning // Default severity
+    fn severity(&self, config: &Config) -> Severity {
+        config
+            .rules
+            .get(self.name())
+            .map(|s| (*s).into())
+            .unwrap_or(Severity::Warning)
     }
 
     /// Checks the given abstract syntax tree (AST) for violations of the rule.
-    fn check(&self, ast: &[Stmt], file_path: &str, source: &str) -> Vec<Diagnostic>;
+    fn check(
+        &self,
+        ast: &[Stmt],
+        file_path: &str,
+        source: &str,
+        config: &Config,
+    ) -> Vec<Diagnostic>;
 }
 
 /// A registry for linting rules.
@@ -25,6 +36,12 @@ pub trait LintRule: Send + Sync {
 pub struct LintRuleRegistry {
     rules: Vec<Box<dyn LintRule>>,
     enabled_rules: HashSet<String>,
+}
+
+impl Default for LintRuleRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[allow(dead_code)]
@@ -54,14 +71,30 @@ impl LintRuleRegistry {
     }
 
     /// Runs all enabled linting rules on the given AST.
-    pub fn run_all(&self, ast: &[Stmt], file_path: &str, source: &str) -> Vec<Diagnostic> {
+    pub fn run_all(
+        &self,
+        ast: &[Stmt],
+        file_path: &str,
+        source: &str,
+        config: &Config,
+    ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         for rule in &self.rules {
-            if self.enabled_rules.contains(rule.name()) {
-                diagnostics.extend(rule.check(ast, file_path, source));
+            if config.rules.contains_key(rule.name()) {
+                diagnostics.extend(rule.check(ast, file_path, source, config));
             }
         }
         diagnostics
+    }
+}
+
+impl From<RuleSeverity> for Severity {
+    fn from(severity: RuleSeverity) -> Self {
+        match severity {
+            RuleSeverity::Error => Severity::Error,
+            RuleSeverity::Warn => Severity::Warning,
+            RuleSeverity::Info => Severity::Info,
+        }
     }
 }
 
@@ -69,13 +102,13 @@ impl LintRuleRegistry {
 mod tests {
     use super::*;
     use crate::ast::{Expr, Literal, Stmt};
-    use crate::errors::{Diagnostic, DiagnosticKind}; // Removed Position
+    use crate::config::Config;
+    use crate::errors::{Diagnostic, DiagnosticKind};
 
     // A mock lint rule for testing purposes.
     struct MockRule {
         name: &'static str,
         description: &'static str,
-        severity: Severity,
         diagnostics: Vec<Diagnostic>,
     }
 
@@ -88,21 +121,36 @@ mod tests {
             self.description
         }
 
-        fn severity(&self) -> Severity {
-            self.severity
-        }
-
-        fn check(&self, _ast: &[Stmt], _file_path: &str, _source: &str) -> Vec<Diagnostic> {
-            // When creating diagnostics in the mock rule, ensure they use the rule's severity
+        fn check(
+            &self,
+            _ast: &[Stmt],
+            _file_path: &str,
+            _source: &str,
+            config: &Config,
+        ) -> Vec<Diagnostic> {
             self.diagnostics
                 .iter()
                 .map(|d| {
                     let mut new_d = d.clone();
-                    new_d.severity = self.severity;
+                    new_d.severity = self.severity(config);
                     new_d
                 })
                 .collect()
         }
+    }
+
+    fn get_default_config() -> Config {
+        let mut config = Config::default();
+        config
+            .rules
+            .insert("mock-rule".to_string(), RuleSeverity::Warn);
+        config
+            .rules
+            .insert("mock-rule-1".to_string(), RuleSeverity::Warn);
+        config
+            .rules
+            .insert("mock-rule-2".to_string(), RuleSeverity::Error);
+        config
     }
 
     #[test]
@@ -111,12 +159,11 @@ mod tests {
         let rule = MockRule {
             name: "mock-rule",
             description: "A mock rule for testing.",
-            severity: Severity::Warning,
             diagnostics: vec![Diagnostic::new_with_severity(
                 DiagnosticKind::Linter,
-                Severity::Warning, // Explicitly set severity
+                Severity::Warning, // This will be overridden by the config
                 "Mock error".to_string(),
-                0..0, // Span is not used in this test, but required
+                0..0,
             )],
         };
 
@@ -128,7 +175,8 @@ mod tests {
             },
             span: 0..0,
         }];
-        let diagnostics = registry.run_all(&ast, "test.bal", "");
+        let config = get_default_config();
+        let diagnostics = registry.run_all(&ast, "test.bal", "", &config);
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].message, "Mock error");
@@ -136,22 +184,20 @@ mod tests {
     }
 
     #[test]
-    fn test_disable_rule() {
+    fn test_disable_rule_via_config() {
         let mut registry = LintRuleRegistry::new();
         let rule = MockRule {
             name: "mock-rule",
             description: "A mock rule for testing.",
-            severity: Severity::Warning,
             diagnostics: vec![Diagnostic::new_with_severity(
                 DiagnosticKind::Linter,
-                Severity::Warning, // Explicitly set severity
+                Severity::Warning,
                 "Mock error".to_string(),
                 0..0,
             )],
         };
 
         registry.register(Box::new(rule));
-        registry.disable_rule("mock-rule");
 
         let ast = vec![Stmt::Expression {
             expression: Expr::Literal {
@@ -160,7 +206,11 @@ mod tests {
             },
             span: 0..0,
         }];
-        let diagnostics = registry.run_all(&ast, "test.bal", "");
+
+        let mut config = get_default_config();
+        config.rules.remove("mock-rule"); // Rule is not in config, so it shouldn't run
+
+        let diagnostics = registry.run_all(&ast, "test.bal", "", &config);
 
         assert!(diagnostics.is_empty());
     }
@@ -171,10 +221,9 @@ mod tests {
         let rule1 = MockRule {
             name: "mock-rule-1",
             description: "A mock rule for testing.",
-            severity: Severity::Warning,
             diagnostics: vec![Diagnostic::new_with_severity(
                 DiagnosticKind::Linter,
-                Severity::Warning, // Explicitly set severity
+                Severity::Warning,
                 "Mock error 1".to_string(),
                 0..0,
             )],
@@ -182,10 +231,9 @@ mod tests {
         let rule2 = MockRule {
             name: "mock-rule-2",
             description: "Another mock rule for testing.",
-            severity: Severity::Error,
             diagnostics: vec![Diagnostic::new_with_severity(
                 DiagnosticKind::Linter,
-                Severity::Error, // Explicitly set severity
+                Severity::Error,
                 "Mock error 2".to_string(),
                 0..0,
             )],
@@ -201,7 +249,8 @@ mod tests {
             },
             span: 0..0,
         }];
-        let diagnostics = registry.run_all(&ast, "test.bal", "");
+        let config = get_default_config();
+        let diagnostics = registry.run_all(&ast, "test.bal", "", &config);
 
         assert_eq!(diagnostics.len(), 2);
         assert!(diagnostics.iter().any(|d| d.message == "Mock error 1"));

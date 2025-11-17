@@ -1,0 +1,11 @@
+[rules]
+camel-case = "info"
+constant-case = "info"
+line-length = "warn"
+max-function-length = "warn"
+missing-return = "error"
+unused-variables = "error"
+
+[settings]
+max-line-length = 120
+max-function-length = 50
