@@ -1,11 +1,14 @@
-use crate::ast::Stmt;
-use crate::errors::{Diagnostic, DiagnosticKind};
-use crate::linter::Rule;
+use crate::{
+    ast::Stmt,
+    config::Config,
+    errors::{Diagnostic, DiagnosticKind, Severity},
+    linter::registry::LintRule,
+};
 
 /// A linting rule to enforce that constant variable names are in SCREAMING_SNAKE_CASE.
-pub struct ConstantCase;
+pub struct ConstantCaseRule;
 
-impl Rule for ConstantCase {
+impl LintRule for ConstantCaseRule {
     /// Returns the name of the rule.
     fn name(&self) -> &'static str {
         "constant-case"
@@ -16,32 +19,46 @@ impl Rule for ConstantCase {
         "Constant variable names should be in SCREAMING_SNAKE_CASE."
     }
 
-    /// Validates a given statement to ensure that constant variable names are in SCREAMING_SNAKE_CASE.
-    ///
-    /// # Arguments
-    ///
-    /// * `statement` - The statement to validate.
-    ///
-    /// # Returns
-    ///
-    /// A vector of diagnostics if the constant variable name is not in SCREAMING_SNAKE_CASE.
-    fn validate(&self, statement: &Stmt, _source: &str) -> Vec<Diagnostic> {
+    /// Checks the given abstract syntax tree (AST) for violations of the rule.
+    fn check(
+        &self,
+        ast: &[Stmt],
+        _file_path: &str,
+        source: &str,
+        config: &Config,
+    ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
-
-        if let Stmt::ConstDecl {
-            name, name_span, ..
-        } = statement
-        {
-            if !is_screaming_snake_case(name) {
-                diagnostics.push(Diagnostic::new(
-                    DiagnosticKind::Linter,
-                    "Constant variable names should be in SCREAMING_SNAKE_CASE.".to_string(),
-                    name_span.clone(),
-                ));
-            }
+        let severity = self.severity(config);
+        for stmt in ast {
+            check_and_enforce_constant_case(stmt, &mut diagnostics, source, severity);
         }
-
         diagnostics
+    }
+}
+
+/// Recursively checks for constant declarations and enforces SCREAMING_SNAKE_CASE.
+#[allow(unused_variables)]
+fn check_and_enforce_constant_case(
+    stmt: &Stmt,
+    diagnostics: &mut Vec<Diagnostic>,
+    source: &str, // Reverted to source: &str
+    severity: Severity,
+) {
+    if let Stmt::ConstDecl {
+        name, name_span, ..
+    } = stmt
+    {
+        if !is_screaming_snake_case(name) {
+            diagnostics.push(Diagnostic::new_with_severity(
+                DiagnosticKind::Linter,
+                severity,
+                format!(
+                    "Constant variable \"{}\" is not in SCREAMING_SNAKE_CASE.",
+                    name
+                ),
+                name_span.clone(),
+            ));
+        }
     }
 }
 

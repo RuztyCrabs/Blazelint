@@ -1,54 +1,48 @@
 use crate::{
     ast::Stmt,
+    config::Config,
     errors::{Diagnostic, DiagnosticKind},
-    linter::Rule,
+    linter::registry::LintRule,
 };
 
-const MAX_LINE_LENGTH: usize = 120;
-
 /// A linting rule to enforce that lines do not exceed a maximum length.
-#[derive(Debug, Clone)]
-pub struct LineLength;
+pub struct LineLengthRule;
 
-impl Rule for LineLength {
+impl LintRule for LineLengthRule {
     /// Returns the name of the rule.
     fn name(&self) -> &'static str {
-        "line_length"
+        "line-length"
     }
 
     /// Returns a description of the rule.
     fn description(&self) -> &'static str {
-        "Lines should not exceed 120 characters."
+        "Lines should not exceed the configured maximum length."
     }
 
-    /// Validates a given statement to ensure that it does not exceed the maximum line length.
-    ///
-    /// # Arguments
-    ///
-    /// * `statement` - The statement to validate.
-    /// * `source` - The source code of the file being linted.
-    ///
-    /// # Returns
-    ///
-    /// A vector of diagnostics if the statement exceeds the maximum line length.
-    fn validate(&self, statement: &Stmt, source: &str) -> Vec<Diagnostic> {
+    /// Checks the given source code for lines that exceed the maximum length.
+    fn check(
+        &self,
+        _ast: &[Stmt],
+        _file_path: &str,
+        source: &str,
+        config: &Config,
+    ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
-        let span = statement.span();
-
-        let statement_source = &source[span.start..span.end];
-
-        for line in statement_source.lines() {
-            if line.len() > MAX_LINE_LENGTH {
-                diagnostics.push(Diagnostic::new(
+        let max_line_length = config.settings.max_line_length as usize;
+        let severity = self.severity(config);
+        let mut offset = 0;
+        for line in source.lines() {
+            if line.len() > max_line_length {
+                let span = offset..offset + line.len();
+                diagnostics.push(Diagnostic::new_with_severity(
                     DiagnosticKind::Linter,
-                    self.description().to_string(),
-                    span.clone(),
+                    severity,
+                    format!("Line exceeds {} characters.", max_line_length),
+                    span, // Span for the diagnostic
                 ));
-                // We only want to report the error once per statement
-                break;
             }
+            offset += line.len() + 1;
         }
-
         diagnostics
     }
 }

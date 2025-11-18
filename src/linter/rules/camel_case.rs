@@ -1,21 +1,20 @@
-//! Rule to enforce camelCase for variable names.
-
 use crate::{
     ast::Stmt,
-    errors::{Diagnostic, DiagnosticKind},
-    linter::Rule,
+    config::Config,
+    errors::{Diagnostic, DiagnosticKind, Severity},
+    linter::registry::LintRule,
 };
 
 /// A rule that enforces variable names to be in camelCase.
 ///
 /// This rule checks for variable declarations and reports a diagnostic
 /// if the variable name is not in camelCase.
-pub struct CamelCase;
+pub struct CamelCaseRule;
 
-impl Rule for CamelCase {
+impl LintRule for CamelCaseRule {
     /// Returns the name of the rule.
     fn name(&self) -> &'static str {
-        "camel_case"
+        "camel-case"
     }
 
     /// Returns a description of the rule.
@@ -23,35 +22,74 @@ impl Rule for CamelCase {
         "Variables should be in camelCase."
     }
 
-    /// Validates the given statement against the rule.
-    ///
-    /// This function checks if the statement is a variable declaration and
-    /// if the variable name is in camelCase.
-    ///
-    /// # Arguments
-    ///
-    /// * `statement` - The statement to validate
-    ///
-    /// # Returns
-    ///
-    /// A vector of diagnostics found in the statement
-    fn validate(&self, statement: &Stmt, _source: &str) -> Vec<Diagnostic> {
+    /// Checks the given abstract syntax tree (AST) for violations of the rule.
+    fn check(
+        &self,
+        ast: &[Stmt],
+        _file_path: &str,
+        source: &str,
+        config: &Config,
+    ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
+        let severity = self.severity(config);
+        for stmt in ast {
+            check_and_enforce_camel_case(stmt, &mut diagnostics, source, severity);
+        }
+        diagnostics
+    }
+}
 
-        if let Stmt::VarDecl {
+/// Recursively checks for variable declarations and enforces camelCase.
+#[allow(clippy::only_used_in_recursion)]
+fn check_and_enforce_camel_case(
+    stmt: &Stmt,
+    diagnostics: &mut Vec<Diagnostic>,
+    source: &str, // Reverted to source: &str
+    severity: Severity,
+) {
+    match stmt {
+        Stmt::VarDecl {
             name, name_span, ..
-        } = statement
-        {
+        } => {
             if !is_camel_case(name) {
-                diagnostics.push(Diagnostic::new(
+                diagnostics.push(Diagnostic::new_with_severity(
                     DiagnosticKind::Linter,
+                    severity,
                     format!("Variable \"{}\" is not in camelCase.", name),
                     name_span.clone(),
                 ));
             }
         }
-
-        diagnostics
+        Stmt::Function { body, .. } => {
+            for s in body {
+                check_and_enforce_camel_case(s, diagnostics, source, severity);
+            }
+        }
+        Stmt::If {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            for s in then_branch {
+                check_and_enforce_camel_case(s, diagnostics, source, severity);
+            }
+            if let Some(else_branch) = else_branch {
+                for s in else_branch {
+                    check_and_enforce_camel_case(s, diagnostics, source, severity);
+                }
+            }
+        }
+        Stmt::While { body, .. } => {
+            for s in body {
+                check_and_enforce_camel_case(s, diagnostics, source, severity);
+            }
+        }
+        Stmt::Foreach { body, .. } => {
+            for s in body {
+                check_and_enforce_camel_case(s, diagnostics, source, severity);
+            }
+        }
+        _ => {}
     }
 }
 
