@@ -25,7 +25,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
       - name: Configure Git
@@ -86,15 +85,28 @@ jobs:
             exit 1
           fi
 
-      - name: Commit changes
+      - name: Create version bump branch
         run: |
+          BRANCH="version-bump/${{ steps.new_version.outputs.version }}"
+          git checkout -b "$BRANCH"
           git add Cargo.toml Cargo.lock
           git commit -m "chore: bump version to ${{ steps.new_version.outputs.version }}"
+          git push origin "$BRANCH"
 
-      - name: Create tag
+      - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git tag -a "v${{ steps.new_version.outputs.version }}" -m "Release v${{ steps.new_version.outputs.version }}"
+          gh pr create \
+            --title "chore: bump version to ${{ steps.new_version.outputs.version }}" \
+            --body "Automated version bump to **${{ steps.new_version.outputs.version }}**
 
-      - name: Push commit and tag atomically
-        run: |
-          git push origin main "v${{ steps.new_version.outputs.version }}"
+          This PR was created by the version bump workflow.
+          
+          **After merging**, a tag will be created automatically and the release workflow will be triggered.
+          
+          - Bump type: **${{ inputs.bump_type }}**
+          - New version: **v${{ steps.new_version.outputs.version }}**" \
+            --label "release" \
+            --base main \
+            --head "version-bump/${{ steps.new_version.outputs.version }}"
