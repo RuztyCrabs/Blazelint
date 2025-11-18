@@ -12,13 +12,14 @@ pub trait LintRule: Send + Sync {
     /// Describes what the rule does.
     fn description(&self) -> &'static str;
 
-    /// Returns the severity of the rule.
+    /// Returns the severity of the rule based on configuration.
     fn severity(&self, config: &Config) -> Severity {
+        // Changed back to Severity
         config
             .rules
             .get(self.name())
-            .map(|s| (*s).into())
-            .unwrap_or(Severity::Warning)
+            .map(|s| (*s).into()) // This will now use the updated From impl
+            .unwrap_or(Severity::Warning) // Default to Warning
     }
 
     /// Checks the given abstract syntax tree (AST) for violations of the rule.
@@ -80,8 +81,23 @@ impl LintRuleRegistry {
     ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         for rule in &self.rules {
-            if config.rules.contains_key(rule.name()) {
-                diagnostics.extend(rule.check(ast, file_path, source, config));
+            let rule_severity_from_config = config.rules.get(rule.name());
+
+            match rule_severity_from_config {
+                Some(RuleSeverity::Off) => {
+                    // Rule is explicitly turned off, skip it.
+                    continue;
+                }
+                Some(_) => {
+                    // Rule is explicitly configured with Error, Warn, or Info. Run it.
+                    diagnostics.extend(rule.check(ast, file_path, source, config));
+                }
+                None => {
+                    // Rule is not mentioned in the config.
+                    // According to the test's intent, this means it should NOT run.
+                    // So, do nothing (skip it).
+                    continue;
+                }
             }
         }
         diagnostics
@@ -94,10 +110,10 @@ impl From<RuleSeverity> for Severity {
             RuleSeverity::Error => Severity::Error,
             RuleSeverity::Warn => Severity::Warning,
             RuleSeverity::Info => Severity::Info,
+            RuleSeverity::Off => Severity::Info, // Map Off to Info, as it won't be reported anyway
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
