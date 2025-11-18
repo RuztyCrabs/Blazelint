@@ -48,7 +48,9 @@ jobs:
         id: new_version
         run: |
           CURRENT="${{ steps.current_version.outputs.version }}"
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          MAJOR=$(echo $CURRENT | cut -d. -f1)
+          MINOR=$(echo $CURRENT | cut -d. -f2)
+          PATCH=$(echo $CURRENT | cut -d. -f3)
           
           case "${{ inputs.bump_type }}" in
             major)
