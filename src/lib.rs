@@ -25,7 +25,7 @@ use std::process;
 pub fn run() {
     println!("Ballerina Linter (WIP)");
 
-    let config = match config::load_config() {
+    let config = match config::load_config(None) {
         Ok(config) => config,
         Err(err) => {
             eprintln!("Error loading configuration: {}", err);

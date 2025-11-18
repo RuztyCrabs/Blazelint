@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Debug, Deserialize)]
@@ -67,8 +67,13 @@ pub enum ConfigError {
     ValidationError(String),
 }
 
-pub fn load_config() -> Result<Config, ConfigError> {
-    find_blazerc().map_or_else(
+pub fn load_config(start_path: Option<&Path>) -> Result<Config, ConfigError> {
+    let path_to_search = match start_path {
+        Some(p) => p.to_path_buf(),
+        None => std::env::current_dir()?,
+    };
+
+    find_blazerc(&path_to_search).map_or_else(
         || Ok(Config::default()),
         |path| {
             let content = fs::read_to_string(path)?;
@@ -79,9 +84,8 @@ pub fn load_config() -> Result<Config, ConfigError> {
     )
 }
 
-fn find_blazerc() -> Option<PathBuf> {
-    let current_dir = std::env::current_dir().ok()?;
-    let mut current = current_dir.as_path();
+fn find_blazerc(start_path: &Path) -> Option<PathBuf> {
+    let mut current = start_path;
 
     loop {
         let config_path = current.join(".blazerc");

@@ -5,8 +5,7 @@ use tempfile::tempdir;
 #[test]
 fn test_load_default_config() {
     let dir = tempdir().unwrap();
-    std::env::set_current_dir(&dir).unwrap();
-    let config = load_config().unwrap();
+    let config = load_config(Some(dir.path())).unwrap();
     assert_eq!(config.settings.max_line_length, 120);
     assert_eq!(config.settings.max_function_length, 50);
     assert_eq!(config.rules.get("camel-case"), Some(&RuleSeverity::Error));
@@ -29,9 +28,8 @@ max-function-length = 40
 patterns = ["vendor/**"]
 "#;
     fs::write(config_path, config_content).unwrap();
-    std::env::set_current_dir(&dir).unwrap();
 
-    let config = load_config().unwrap();
+    let config = load_config(Some(dir.path())).unwrap();
 
     assert_eq!(config.settings.max_line_length, 100);
     assert_eq!(config.settings.max_function_length, 40);
