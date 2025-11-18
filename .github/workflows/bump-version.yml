@@ -79,13 +79,22 @@ jobs:
       - name: Update Cargo.lock
         run: cargo check
 
-      - name: Commit and push changes
+      - name: Verify tag doesn't exist
+        run: |
+          if git rev-parse "v${{ steps.new_version.outputs.version }}" >/dev/null 2>&1; then
+            echo "Error: Tag v${{ steps.new_version.outputs.version }} already exists"
+            exit 1
+          fi
+
+      - name: Commit changes
         run: |
           git add Cargo.toml Cargo.lock
           git commit -m "chore: bump version to ${{ steps.new_version.outputs.version }}"
-          git push origin main
 
-      - name: Create and push tag
+      - name: Create tag
         run: |
           git tag -a "v${{ steps.new_version.outputs.version }}" -m "Release v${{ steps.new_version.outputs.version }}"
-          git push origin "v${{ steps.new_version.outputs.version }}"
+
+      - name: Push commit and tag atomically
+        run: |
+          git push origin main "v${{ steps.new_version.outputs.version }}"
