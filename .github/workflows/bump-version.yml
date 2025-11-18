@@ -79,10 +79,16 @@ jobs:
         run: cargo check
 
       - name: Verify tag doesn't exist
+        id: check_tag
         run: |
+          git fetch --tags
           if git rev-parse "v${{ steps.new_version.outputs.version }}" >/dev/null 2>&1; then
-            echo "Error: Tag v${{ steps.new_version.outputs.version }} already exists"
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Tag v${{ steps.new_version.outputs.version }} already exists. Please use a different version bump."
             exit 1
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "✅ Tag v${{ steps.new_version.outputs.version }} is available"
           fi
 
       - name: Create version bump branch
