@@ -1,5 +1,6 @@
 use crate::{
     ast::Stmt,
+    config::Config,
     errors::{Diagnostic, DiagnosticKind, Severity},
     linter::registry::LintRule,
 };
@@ -10,7 +11,7 @@ pub struct ConstantCaseRule;
 impl LintRule for ConstantCaseRule {
     /// Returns the name of the rule.
     fn name(&self) -> &'static str {
-        "constant_case"
+        "constant-case"
     }
 
     /// Returns a description of the rule.
@@ -18,16 +19,18 @@ impl LintRule for ConstantCaseRule {
         "Constant variable names should be in SCREAMING_SNAKE_CASE."
     }
 
-    /// Returns the severity of the rule.
-    fn severity(&self) -> Severity {
-        Severity::Info
-    }
-
     /// Checks the given abstract syntax tree (AST) for violations of the rule.
-    fn check(&self, ast: &[Stmt], _file_path: &str, source: &str) -> Vec<Diagnostic> {
+    fn check(
+        &self,
+        ast: &[Stmt],
+        _file_path: &str,
+        source: &str,
+        config: &Config,
+    ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
+        let severity = self.severity(config);
         for stmt in ast {
-            check_and_enforce_constant_case(stmt, &mut diagnostics, source, self.severity());
+            check_and_enforce_constant_case(stmt, &mut diagnostics, source, severity);
         }
         diagnostics
     }

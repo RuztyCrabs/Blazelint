@@ -1,11 +1,18 @@
 use crate::{
     ast::Stmt,
-    errors::{Diagnostic, DiagnosticKind, Severity},
+    config::Config,
+    errors::{Diagnostic, DiagnosticKind},
     linter::registry::LintRule,
 };
 
 /// Linter rule that checks for functions with non-void return types that might not return a value on all code paths.
 pub struct MissingReturnRule;
+
+impl Default for MissingReturnRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl MissingReturnRule {
     /// Creates a new `MissingReturn` rule.
@@ -51,19 +58,22 @@ impl MissingReturnRule {
 
 impl LintRule for MissingReturnRule {
     fn name(&self) -> &'static str {
-        "missing_return"
+        "missing-return"
     }
 
     fn description(&self) -> &'static str {
         "Detects functions with non-void return types that might not return a value on all code paths."
     }
 
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn check(&self, ast: &[Stmt], _file_path: &str, _source: &str) -> Vec<Diagnostic> {
+    fn check(
+        &self,
+        ast: &[Stmt],
+        _file_path: &str,
+        _source: &str,
+        config: &Config,
+    ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
+        let severity = self.severity(config);
         for stmt in ast {
             if let Stmt::Function {
                 name,
@@ -76,7 +86,7 @@ impl LintRule for MissingReturnRule {
                 if return_type.is_some() && !self.check_returns_in_block(body) {
                     diagnostics.push(Diagnostic::new_with_severity(
                         DiagnosticKind::Linter,
-                        self.severity(),
+                        severity,
                         format!(
                             "Function '{}' might not return a value on all code paths.",
                             name

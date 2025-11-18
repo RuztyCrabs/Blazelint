@@ -2,10 +2,12 @@
 
 use crate::{
     ast::{Expr, Stmt},
-    errors::{Diagnostic, DiagnosticKind, Position, Severity},
+    config::Config,
+    errors::{Diagnostic, DiagnosticKind, Severity},
     linter::registry::LintRule,
 };
 use std::collections::HashMap;
+use std::ops::Range;
 
 /// A rule that detects unused variables.
 ///
@@ -16,7 +18,7 @@ pub struct UnusedVariablesRule;
 impl LintRule for UnusedVariablesRule {
     /// Returns the name of the rule.
     fn name(&self) -> &'static str {
-        "unused_variables"
+        "unused-variables"
     }
 
     /// Returns a description of the rule.
@@ -24,14 +26,16 @@ impl LintRule for UnusedVariablesRule {
         "Detects unused variables."
     }
 
-    /// Returns the severity of the rule.
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-
     /// Validates the entire AST for unused variables.
-    fn check(&self, ast: &[Stmt], _file_path: &str, source: &str) -> Vec<Diagnostic> {
-        let mut visitor = UnusedVariableVisitor::new(source, self.severity());
+    fn check(
+        &self,
+        ast: &[Stmt],
+        _file_path: &str,
+        source: &str,
+        config: &Config,
+    ) -> Vec<Diagnostic> {
+        let severity = self.severity(config);
+        let mut visitor = UnusedVariableVisitor::new(source, severity);
         visitor.visit_stmts(ast);
         visitor.exit_scope(); // Exit the global scope
         visitor.diagnostics
@@ -41,8 +45,8 @@ impl LintRule for UnusedVariablesRule {
 /// Information about a variable's declaration and usage status.
 #[derive(Debug, Clone)]
 struct VariableInfo {
-    /// The position in the source code where the variable was declared.
-    declaration_pos: Position,
+    /// The span in the source code where the variable was declared.
+    declaration_span: Range<usize>,
     /// Whether the variable was used.
     used: bool,
 }
@@ -53,7 +57,7 @@ pub struct UnusedVariableVisitor<'a> {
     scopes: Vec<HashMap<String, VariableInfo>>,
     /// Collected diagnostics for unused variables.
     diagnostics: Vec<Diagnostic>,
-    source: &'a str,
+    _source: &'a str,
     severity: Severity,
 }
 
@@ -63,7 +67,7 @@ impl<'a> UnusedVariableVisitor<'a> {
         Self {
             scopes: vec![HashMap::new()],
             diagnostics: Vec::new(),
-            source,
+            _source: source,
             severity,
         }
     }
@@ -82,7 +86,7 @@ impl<'a> UnusedVariableVisitor<'a> {
                         DiagnosticKind::Linter,
                         self.severity,
                         format!("Variable {} is never used", name),
-                        info.declaration_pos.line..info.declaration_pos.column, // Convert Position to Span
+                        info.declaration_span.clone(),
                     ));
                 }
             }
@@ -90,12 +94,12 @@ impl<'a> UnusedVariableVisitor<'a> {
     }
 
     /// Declares a new variable in the current scope.
-    fn declare_variable(&mut self, name: String, pos: Position) {
+    fn declare_variable(&mut self, name: String, span: Range<usize>) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(
                 name,
                 VariableInfo {
-                    declaration_pos: pos,
+                    declaration_span: span,
                     used: false,
                 },
             );
@@ -131,14 +135,18 @@ impl<'a> UnusedVariableVisitor<'a> {
                 if let Some(init) = initializer {
                     self.visit_expr(init);
                 }
-                let pos = crate::utils::get_line_and_column(name_span.start, self.source);
-                self.declare_variable(name.clone(), pos);
+                self.declare_variable(name.clone(), name_span.clone());
             }
-            Stmt::Function { body, params, .. } => {
+            Stmt::Function {
+                body,
+                params,
+                name_span,
+                ..
+            } => {
                 self.enter_scope();
                 for (name, _) in params {
                     // FIXME: We don't have a span for the parameter name
-                    self.declare_variable(name.clone(), Position::new(0, 0));
+                    self.declare_variable(name.clone(), name_span.clone());
                 }
                 self.visit_stmts(body);
                 self.exit_scope();
@@ -176,8 +184,7 @@ impl<'a> UnusedVariableVisitor<'a> {
             } => {
                 self.visit_expr(iterable);
                 self.enter_scope();
-                let pos = crate::utils::get_line_and_column(span.start, self.source);
-                self.declare_variable(variable.clone(), pos);
+                self.declare_variable(variable.clone(), span.clone());
                 self.visit_stmts(body);
                 self.exit_scope();
             }
