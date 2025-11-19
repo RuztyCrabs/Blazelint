@@ -33,9 +33,10 @@ impl LintRule for UnusedVariablesRule {
         _file_path: &str,
         source: &str,
         config: &Config,
+        line_tracker: &crate::utils::LineTracker,
     ) -> Vec<Diagnostic> {
         let severity = self.severity(config);
-        let mut visitor = UnusedVariableVisitor::new(source, severity);
+        let mut visitor = UnusedVariableVisitor::new(source, severity, line_tracker);
         visitor.visit_stmts(ast);
         visitor.exit_scope(); // Exit the global scope
         visitor.diagnostics
@@ -52,23 +53,25 @@ struct VariableInfo {
 }
 
 /// Visitor that traverses the AST to track variable usage and collect diagnostics for unused variables.
-pub struct UnusedVariableVisitor<'a> {
-    /// Stack of variable scopes (for block scoping).
+struct UnusedVariableVisitor<'a> {
+    /// Stack of variable scopes. Each scope maps variable names to their information.
     scopes: Vec<HashMap<String, VariableInfo>>,
-    /// Collected diagnostics for unused variables.
+    /// The collected diagnostics found during the walk.
     diagnostics: Vec<Diagnostic>,
     _source: &'a str,
     severity: Severity,
+    line_tracker: &'a crate::utils::LineTracker,
 }
 
 impl<'a> UnusedVariableVisitor<'a> {
     /// Creates a new UnusedVariableVisitor with an initial (global) scope.
-    pub fn new(source: &'a str, severity: Severity) -> Self {
+    pub fn new(source: &'a str, severity: Severity, line_tracker: &'a crate::utils::LineTracker) -> Self {
         Self {
             scopes: vec![HashMap::new()],
             diagnostics: Vec::new(),
             _source: source,
             severity,
+            line_tracker,
         }
     }
 
@@ -82,11 +85,12 @@ impl<'a> UnusedVariableVisitor<'a> {
         if let Some(scope) = self.scopes.pop() {
             for (name, info) in scope {
                 if !info.used && !name.starts_with('_') {
-                    self.diagnostics.push(Diagnostic::new_with_severity(
+                    self.diagnostics.push(Diagnostic::new_tracked(
                         DiagnosticKind::Linter,
                         self.severity,
                         format!("Variable {} is never used", name),
                         info.declaration_span.clone(),
+                        self.line_tracker,
                     ));
                 }
             }

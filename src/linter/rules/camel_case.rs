@@ -29,11 +29,12 @@ impl LintRule for CamelCaseRule {
         _file_path: &str,
         source: &str,
         config: &Config,
+        line_tracker: &crate::utils::LineTracker,
     ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         let severity = self.severity(config);
         for stmt in ast {
-            check_and_enforce_camel_case(stmt, &mut diagnostics, source, severity);
+            check_and_enforce_camel_case(stmt, &mut diagnostics, source, severity, line_tracker);
         }
         diagnostics
     }
@@ -44,25 +45,27 @@ impl LintRule for CamelCaseRule {
 fn check_and_enforce_camel_case(
     stmt: &Stmt,
     diagnostics: &mut Vec<Diagnostic>,
-    source: &str, // Reverted to source: &str
+    source: &str, // Kept for compatibility 
     severity: Severity,
+    line_tracker: &crate::utils::LineTracker,
 ) {
     match stmt {
         Stmt::VarDecl {
             name, name_span, ..
         } => {
             if !is_camel_case(name) {
-                diagnostics.push(Diagnostic::new_with_severity(
+                diagnostics.push(Diagnostic::new_tracked(
                     DiagnosticKind::Linter,
                     severity,
                     format!("Variable \"{}\" is not in camelCase.", name),
                     name_span.clone(),
+                    line_tracker,
                 ));
             }
         }
         Stmt::Function { body, .. } => {
             for s in body {
-                check_and_enforce_camel_case(s, diagnostics, source, severity);
+                check_and_enforce_camel_case(s, diagnostics, source, severity, line_tracker);
             }
         }
         Stmt::If {
@@ -71,22 +74,22 @@ fn check_and_enforce_camel_case(
             ..
         } => {
             for s in then_branch {
-                check_and_enforce_camel_case(s, diagnostics, source, severity);
+                check_and_enforce_camel_case(s, diagnostics, source, severity, line_tracker);
             }
             if let Some(else_branch) = else_branch {
                 for s in else_branch {
-                    check_and_enforce_camel_case(s, diagnostics, source, severity);
+                    check_and_enforce_camel_case(s, diagnostics, source, severity, line_tracker);
                 }
             }
         }
         Stmt::While { body, .. } => {
             for s in body {
-                check_and_enforce_camel_case(s, diagnostics, source, severity);
+                check_and_enforce_camel_case(s, diagnostics, source, severity, line_tracker);
             }
         }
         Stmt::Foreach { body, .. } => {
             for s in body {
-                check_and_enforce_camel_case(s, diagnostics, source, severity);
+                check_and_enforce_camel_case(s, diagnostics, source, severity, line_tracker);
             }
         }
         _ => {}

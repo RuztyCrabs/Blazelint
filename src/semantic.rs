@@ -1028,6 +1028,8 @@ impl Analyzer {
 }
 
 /// Public facade used by the rest of the crate to run semantic analysis.
-pub fn analyze(statements: &[Stmt]) -> Result<(), Vec<Diagnostic>> {
+pub fn analyze(statements: &[Stmt], _line_tracker: &crate::utils::LineTracker) -> Result<(), Vec<Diagnostic>> {
+    // For now, we're not using line_tracker in semantic analysis
+    // but we accept it for future optimizations and consistency
     Analyzer::new().analyze(statements)
 }

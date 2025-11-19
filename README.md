@@ -12,6 +12,7 @@
 - [Documentation](#documentation)
 - [Installation](#installation)
 - [Usage](#usage)
+- [Configuration](#configuration)
 - [Development environment](#development-environment)
 	- [Using GitHub Codespaces](#using-github-codespaces)
 	- [Using VS Code ](#using-vs-code-if-you-have-it-installed-locally)
@@ -30,6 +31,8 @@
 *   [BNF Grammar for Ballerina Subset](docs/BNF.md)
 * [Software Requirement Specification (SRS)](https://github.com/RuztyCrabs/Blazelint/releases/latest/download/BlazeLint-SRS.pdf)
 *   [Pipeline overview](docs/pipeline_overview.md)
+*   [Quick Reference](docs/QUICK_REFERENCE.md)
+*   [Implementation Notes](docs/IMPLEMENTATION_NOTES.md)
 
 ## Installation
 
@@ -45,6 +48,8 @@ _Windows and MacOS binaries will be added in a later release._
 
 ## Usage
 
+### Basic Usage
+
 Analyze a Ballerina source file by passing its path to `blazelint`:
 
 ```bash
@@ -56,6 +61,8 @@ blazelint path/to/file.bal
 
 The tool prints the input program, a token stream, the parsed AST, and exits or emits diagnostics if there is any and exits with a non-zero status.
 
+### Development Usage
+
 Running from a checked-out repository is also supported:
 
 ```bash
@@ -63,13 +70,78 @@ cargo run -- path/to/file.bal
 ```
 
 > [!NOTE]
-> `cargo run` builds and executes an unoptimized build (for debug requirments). Always use `cargo build --release` for any benchmark or observations on performance.
+> `cargo run` builds and executes an unoptimized build (for debug requirements). Always use `cargo build --release` for any benchmark or observations on performance.
 
-For a quick smoke test, you can reuse the sample program in `tests/test.bal`:
+For a quick smoke test, you can reuse the sample program in `tests/test-bal-files/`:
 
 ```bash
-blazelint tests/test.bal
+blazelint tests/test-bal-files/simple_errors.bal
 ```
+
+## Configuration
+
+### Configuration File
+
+Blazelint looks for a `.blazerc` configuration file in the current directory or any parent directory. The configuration uses TOML format:
+
+```toml
+# .blazerc - Blazelint Configuration File
+
+[rules]
+# Naming convention rules
+camel-case = "error"       # Enforces camelCase for variables/functions
+constant-case = "warn"     # Enforces SCREAMING_SNAKE_CASE for constants
+
+# Code style rules  
+line-length = "warn"       # Limits line length
+max-function-length = "error"  # Limits function body length
+missing-return = "error"   # Ensures functions have return statements
+unused-variables = "warn"  # Detects unused variable declarations
+
+# Disable specific rules
+some-rule = "off"
+
+[settings]
+max-line-length = 120      # Maximum characters per line
+max-function-length = 50   # Maximum lines in function body
+```
+
+#### Rule Configuration Values
+
+Each rule can be configured with one of these severity levels:
+
+- `"error"` - Causes build failure (non-zero exit code)
+- `"warn"` - Shows warnings but allows build to succeed
+- `"info"` - Shows informational messages
+- `"off"` - Disables the rule completely
+
+#### Available Rules
+
+| Rule | Description | Default Severity | Settings |
+|------|-------------|------------------|----------|
+| `camel-case` | Enforces camelCase naming for variables and functions | `error` | None |
+| `constant-case` | Enforces SCREAMING_SNAKE_CASE for constants | `warn` | None |
+| `line-length` | Limits line length | `warn` | `max-line-length` |
+| `max-function-length` | Limits function body length | `warn` | `max-function-length` |
+| `missing-return` | Ensures functions have return statements | `error` | None |
+| `unused-variables` | Detects unused variable declarations | `warn` | None |
+
+### Configuration Discovery
+
+Blazelint searches for `.blazerc` files in this order:
+
+1. **Current directory**: `./.blazerc`
+2. **Parent directories**: Walks up the directory tree looking for `.blazerc`
+3. **Default configuration**: Uses built-in defaults if no file found
+
+### Rule Engine
+
+The rule engine features:
+
+- **Dynamic Rule Loading**: Only enabled rules are executed
+- **Configurable Severity**: Each rule respects configured severity levels
+- **Caching**: Configuration is cached for performance
+- **Extensible Design**: New rules can be added easily
 
 ## Development environment
 
@@ -98,6 +170,15 @@ The container comes with:
 - Ballerina runtime
 - Extensions for Language Servers, syntax highlighting and debugging support
 - Common utilities (zsh, GitHub CLI, git, etc.)
+
+### Development Dependencies
+
+The project uses the following key dependencies:
+
+- **Core**: Standard library only for main linting logic
+- **Configuration**: `serde`, `toml` for config file parsing
+- **Utilities**: `once_cell`, `thiserror` for error handling and caching
+- **Testing**: `assert_cmd`, `tempfile` for integration tests
  
 ## Building
 
@@ -133,7 +214,8 @@ The container comes with:
 - Ballerina toolchain and IDE extension (optional - for testing or writing ballerina codes)
 
 ### Steps
-- You can adjust the `tests/test.bal` file if you need to debug a specific diagnostic.
+- You can adjust the `tests/test-bal-files/` files if you need to debug a specific diagnostic.
+- Create a `.blazerc` config file to test configuration changes.
 - Set breakpoints as needed.
 - Click on **Run and Debug** from the main method or use `ctrl+shift+D` to jump to debug menu.
 
@@ -144,6 +226,7 @@ The container comes with:
 
 - Changes should be developed and push to following branches based on the area of the feature.
     - feature/linter-core: Changes to the linter engine (lexer, parser, semantic analyzer and BNF document).
+    - feature/rule-engine: Changes to rule engine, configuration system, and linter rules.
     - ci/cd: Changes related to continous integration and deployments.
     - docs: Changes related to documentation.
 
@@ -152,6 +235,26 @@ The container comes with:
     ```bash
     bash scripts/check.sh
     ```
+
+### Adding New Rules
+
+When adding a new linter rule:
+
+1. **Create the rule**: Implement the `LintRule` trait in `src/linter/rules/`
+2. **Register the rule**: Add to the rule registry in `src/lib.rs`
+3. **Add default configuration**: Update `Config::default()` in `src/config.rs`
+4. **Add tests**: Include unit tests and integration tests
+5. **Update docs**: Add rule to the Available Rules table above
+
+### Configuration Changes
+
+When modifying configuration:
+
+1. **Update schema**: Modify configuration structs in `src/config.rs`
+2. **Update defaults**: Ensure backward compatibility in `Config::default()`
+3. **Update validation**: Add appropriate validation logic in `validate_config()`
+4. **Update tests**: Test configuration loading and validation
+5. **Update documentation**: Update configuration examples and rule tables
 
 ## TODO
 

@@ -21,6 +21,7 @@ use semantic::analyze;
 use std::env;
 use std::fs;
 use std::process;
+use utils::LineTracker;
 
 pub fn run() {
     println!("Ballerina Linter (WIP)");
@@ -51,10 +52,14 @@ pub fn run() {
     }
     let file_path = &args[1];
     let input_code = read_source(file_path);
+    
+    // Create LineTracker for efficient position mapping
+    let line_tracker = LineTracker::new(&input_code);
+    
     let tokens = match lex_input(&input_code) {
         Ok(tokens) => tokens,
         Err(diagnostics) => {
-            print_diagnostics(file_path, &input_code, &diagnostics);
+            print_diagnostics(file_path, &input_code, &diagnostics, &line_tracker);
             process::exit(1);
         }
     };
@@ -63,7 +68,7 @@ pub fn run() {
     let mut all_diagnostics = Vec::new();
     all_diagnostics.extend(parse_diagnostics);
     if !ast.is_empty() {
-        if let Err(semantic_diagnostics) = analyze(&ast) {
+        if let Err(semantic_diagnostics) = analyze(&ast, &line_tracker) {
             all_diagnostics.extend(semantic_diagnostics);
         }
         print_ast(&ast);
@@ -73,10 +78,11 @@ pub fn run() {
             file_path,
             &input_code,
             &config,
+            &line_tracker,
         ));
     }
     if !all_diagnostics.is_empty() {
-        print_diagnostics(file_path, &input_code, &all_diagnostics);
+        print_diagnostics(file_path, &input_code, &all_diagnostics, &line_tracker);
 
         if all_diagnostics
             .iter()
@@ -141,11 +147,12 @@ fn run_linter(
     file_path: &str,
     source: &str,
     config: &Config,
+    line_tracker: &LineTracker,
 ) -> Vec<Diagnostic> {
-    registry.run_all(ast, file_path, source, config)
+    registry.run_all(ast, file_path, source, config, line_tracker)
 }
 
-fn print_diagnostics(file_path: &str, source: &str, diagnostics: &[Diagnostic]) {
+fn print_diagnostics(file_path: &str, _source: &str, diagnostics: &[Diagnostic], line_tracker: &LineTracker) {
     for diag in diagnostics {
         let severity_str = match diag.severity {
             Severity::Error => "Error",
@@ -154,9 +161,11 @@ fn print_diagnostics(file_path: &str, source: &str, diagnostics: &[Diagnostic]) 
         };
         println!("{}: {}", severity_str, diag.message);
         if let Some(pos) = diag.position {
+            // Use pre-computed position when available (more efficient)
             println!("  --> {}:{}:{}", file_path, pos.line, pos.column);
         } else {
-            let pos = crate::utils::get_line_and_column(diag.span.start, source);
+            // Fall back to LineTracker for better performance than old method
+            let pos = line_tracker.byte_to_line_col(diag.span.start);
             println!("  --> {}:{}:{}", file_path, pos.line, pos.column);
         }
         for note in &diag.notes {

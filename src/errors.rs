@@ -81,6 +81,27 @@ impl Diagnostic {
         }
     }
 
+    /// Creates a new diagnostic with pre-computed position from LineTracker.
+    /// 
+    /// This is more efficient than computing position during diagnostic display.
+    pub fn new_tracked(
+        kind: DiagnosticKind,
+        severity: Severity,
+        message: impl Into<String>,
+        span: Span,
+        tracker: &crate::utils::LineTracker,
+    ) -> Self {
+        let position = Some(tracker.byte_to_line_col(span.start));
+        Self {
+            kind,
+            severity,
+            message: message.into(),
+            span,
+            notes: Vec::new(),
+            position,
+        }
+    }
+
     /// Attaches an additional note to the diagnostic, returning the mutated value.
     pub fn with_note(mut self, note: impl Into<String>) -> Self {
         self.notes.push(note.into());

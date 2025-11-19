@@ -26,6 +26,7 @@ impl LintRule for LineLengthRule {
         _file_path: &str,
         source: &str,
         config: &Config,
+        line_tracker: &crate::utils::LineTracker,
     ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         let max_line_length = config.settings.max_line_length as usize;
@@ -34,11 +35,12 @@ impl LintRule for LineLengthRule {
         for line in source.lines() {
             if line.len() > max_line_length {
                 let span = offset..offset + line.len();
-                diagnostics.push(Diagnostic::new_with_severity(
+                diagnostics.push(Diagnostic::new_tracked(
                     DiagnosticKind::Linter,
                     severity,
                     format!("Line exceeds {} characters.", max_line_length),
                     span, // Span for the diagnostic
+                    line_tracker,
                 ));
             }
             offset += line.len() + 1;

@@ -29,6 +29,7 @@ pub trait LintRule: Send + Sync {
         file_path: &str,
         source: &str,
         config: &Config,
+        line_tracker: &crate::utils::LineTracker,
     ) -> Vec<Diagnostic>;
 }
 
@@ -78,6 +79,7 @@ impl LintRuleRegistry {
         file_path: &str,
         source: &str,
         config: &Config,
+        line_tracker: &crate::utils::LineTracker,
     ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         for rule in &self.rules {
@@ -90,7 +92,7 @@ impl LintRuleRegistry {
                 }
                 Some(_) => {
                     // Rule is explicitly configured with Error, Warn, or Info. Run it.
-                    diagnostics.extend(rule.check(ast, file_path, source, config));
+                    diagnostics.extend(rule.check(ast, file_path, source, config, line_tracker));
                 }
                 None => {
                     // Rule is not mentioned in the config.
@@ -143,6 +145,7 @@ mod tests {
             _file_path: &str,
             _source: &str,
             config: &Config,
+            _line_tracker: &crate::utils::LineTracker,
         ) -> Vec<Diagnostic> {
             self.diagnostics
                 .iter()
@@ -192,7 +195,8 @@ mod tests {
             span: 0..0,
         }];
         let config = get_default_config();
-        let diagnostics = registry.run_all(&ast, "test.bal", "", &config);
+        let line_tracker = crate::utils::LineTracker::new("");
+        let diagnostics = registry.run_all(&ast, "test.bal", "", &config, &line_tracker);
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].message, "Mock error");
@@ -226,7 +230,8 @@ mod tests {
         let mut config = get_default_config();
         config.rules.remove("mock-rule"); // Rule is not in config, so it shouldn't run
 
-        let diagnostics = registry.run_all(&ast, "test.bal", "", &config);
+        let line_tracker = crate::utils::LineTracker::new("");
+        let diagnostics = registry.run_all(&ast, "test.bal", "", &config, &line_tracker);
 
         assert!(diagnostics.is_empty());
     }
@@ -266,7 +271,8 @@ mod tests {
             span: 0..0,
         }];
         let config = get_default_config();
-        let diagnostics = registry.run_all(&ast, "test.bal", "", &config);
+        let line_tracker = crate::utils::LineTracker::new("");
+        let diagnostics = registry.run_all(&ast, "test.bal", "", &config, &line_tracker);
 
         assert_eq!(diagnostics.len(), 2);
         assert!(diagnostics.iter().any(|d| d.message == "Mock error 1"));

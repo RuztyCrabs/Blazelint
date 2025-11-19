@@ -71,6 +71,7 @@ impl LintRule for MissingReturnRule {
         _file_path: &str,
         _source: &str,
         config: &Config,
+        line_tracker: &crate::utils::LineTracker,
     ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         let severity = self.severity(config);
@@ -84,7 +85,7 @@ impl LintRule for MissingReturnRule {
             } = stmt
             {
                 if return_type.is_some() && !self.check_returns_in_block(body) {
-                    diagnostics.push(Diagnostic::new_with_severity(
+                    diagnostics.push(Diagnostic::new_tracked(
                         DiagnosticKind::Linter,
                         severity,
                         format!(
@@ -92,6 +93,7 @@ impl LintRule for MissingReturnRule {
                             name
                         ),
                         span.clone(),
+                        line_tracker,
                     ));
                 }
             }

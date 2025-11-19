@@ -37,6 +37,7 @@ impl LintRule for MaxFunctionLengthRule {
         _file_path: &str,
         source: &str,
         config: &Config,
+        line_tracker: &crate::utils::LineTracker,
     ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         let max_length = config.settings.max_function_length as usize;
@@ -47,7 +48,7 @@ impl LintRule for MaxFunctionLengthRule {
                 let function_source = &source[span.start..span.end];
                 let line_count = function_source.lines().count();
                 if line_count > max_length {
-                    diagnostics.push(Diagnostic::new_with_severity(
+                    diagnostics.push(Diagnostic::new_tracked(
                         DiagnosticKind::Linter,
                         severity,
                         format!(
@@ -55,6 +56,7 @@ impl LintRule for MaxFunctionLengthRule {
                             name, line_count, max_length
                         ),
                         span.clone(),
+                        line_tracker,
                     ));
                 }
             }

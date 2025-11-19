@@ -26,11 +26,12 @@ impl LintRule for ConstantCaseRule {
         _file_path: &str,
         source: &str,
         config: &Config,
+        line_tracker: &crate::utils::LineTracker,
     ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         let severity = self.severity(config);
         for stmt in ast {
-            check_and_enforce_constant_case(stmt, &mut diagnostics, source, severity);
+            check_and_enforce_constant_case(stmt, &mut diagnostics, source, severity, line_tracker);
         }
         diagnostics
     }
@@ -41,15 +42,16 @@ impl LintRule for ConstantCaseRule {
 fn check_and_enforce_constant_case(
     stmt: &Stmt,
     diagnostics: &mut Vec<Diagnostic>,
-    source: &str, // Reverted to source: &str
+    source: &str, // Kept for compatibility
     severity: Severity,
+    line_tracker: &crate::utils::LineTracker,
 ) {
     if let Stmt::ConstDecl {
         name, name_span, ..
     } = stmt
     {
         if !is_screaming_snake_case(name) {
-            diagnostics.push(Diagnostic::new_with_severity(
+            diagnostics.push(Diagnostic::new_tracked(
                 DiagnosticKind::Linter,
                 severity,
                 format!(
@@ -57,6 +59,7 @@ fn check_and_enforce_constant_case(
                     name
                 ),
                 name_span.clone(),
+                line_tracker,
             ));
         }
     }
