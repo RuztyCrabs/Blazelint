@@ -22,11 +22,21 @@ once_cell = "1.19.0"
 toml = "0.8.14"
 serde = { version = "1.0.203", features = ["derive"] }
 thiserror = "1.0.61"
+clap = { version = "4.4", features = ["derive"] }
 
 [dev-dependencies]
 assert_cmd = "2.0"
 tempfile = "3.10"
+predicates = "3.0"
+
+[[test]]
+name = "cli_diagnostics_test"
+path = "tests/cli_diagnostics_test.rs"
 
 [[test]]
 name = "config_test"
 path = "tests/config_test.rs"
+
+[[test]]
+name = "cli_flags_test"
+path = "tests/cli_flags_test.rs"

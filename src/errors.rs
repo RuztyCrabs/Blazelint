@@ -82,7 +82,7 @@ impl Diagnostic {
     }
 
     /// Creates a new diagnostic with pre-computed position from LineTracker.
-    /// 
+    ///
     /// This is more efficient than computing position during diagnostic display.
     pub fn new_tracked(
         kind: DiagnosticKind,

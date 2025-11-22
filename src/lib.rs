@@ -8,6 +8,7 @@ pub mod semantic;
 pub mod utils;
 
 use ast::Stmt;
+use clap::Parser as ClapParser;
 use config::Config;
 use errors::{Diagnostic, Severity};
 use lexer::Lexer;
@@ -18,12 +19,38 @@ use linter::rules::{
 };
 use parser::Parser;
 use semantic::analyze;
-use std::env;
 use std::fs;
 use std::process;
+use std::time::Instant;
 use utils::LineTracker;
 
+#[derive(ClapParser)]
+#[command(name = "blazelint")]
+#[command(about = "A code linter for Ballerina programming language")]
+#[command(version)]
+pub struct Cli {
+    /// The Ballerina file to lint
+    pub file: String,
+
+    /// Show timing information for each stage
+    #[arg(short = 't', long)]
+    pub timing: bool,
+
+    /// Show detailed timing breakdown (lexer, parser, semantic, linter)
+    #[arg(long)]
+    pub detailed_timing: bool,
+
+    /// Display tokens after lexing
+    #[arg(long, alias = "st")]
+    pub show_tokens: bool,
+
+    /// Display Abstract Syntax Tree (AST) after parsing  
+    #[arg(long, alias = "sa")]
+    pub show_ast: bool,
+}
+
 pub fn run() {
+    let args = Cli::parse();
     println!("Ballerina Linter (WIP)");
 
     let config = match config::load_config(None) {
@@ -45,51 +72,136 @@ pub fn run() {
         registry
     };
 
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        eprintln!("Usage: {} <file_path>", args[0]);
-        process::exit(1);
-    }
-    let file_path = &args[1];
+    let file_path = &args.file;
     let input_code = read_source(file_path);
-    
+
     // Create LineTracker for efficient position mapping
     let line_tracker = LineTracker::new(&input_code);
-    
-    let tokens = match lex_input(&input_code) {
-        Ok(tokens) => tokens,
-        Err(diagnostics) => {
-            print_diagnostics(file_path, &input_code, &diagnostics, &line_tracker);
-            process::exit(1);
+
+    // Lexing stage with timing
+    let (tokens, lex_duration) = {
+        let start = Instant::now();
+        let result = lex_input(&input_code);
+        let duration = start.elapsed();
+        match result {
+            Ok(tokens) => (tokens, duration),
+            Err(diagnostics) => {
+                print_diagnostics(file_path, &input_code, &diagnostics, &line_tracker);
+                process::exit(1);
+            }
         }
     };
-    print_tokens(&tokens);
-    let (ast, parse_diagnostics) = parse_tokens(&tokens);
+
+    if args.detailed_timing {
+        println!("Lexing took: {:?} ({} tokens)", lex_duration, tokens.len());
+    }
+
+    if args.show_tokens {
+        print_tokens(&tokens);
+    }
+
+    // Parsing stage with timing
+    let ((ast, parse_diagnostics), parse_duration) = {
+        let start = Instant::now();
+        let result = parse_tokens(&tokens);
+        let duration = start.elapsed();
+        (result, duration)
+    };
+
+    if args.detailed_timing {
+        println!("Parsing took: {:?}", parse_duration);
+    }
+
     let mut all_diagnostics = Vec::new();
     all_diagnostics.extend(parse_diagnostics);
-    if !ast.is_empty() {
-        if let Err(semantic_diagnostics) = analyze(&ast, &line_tracker) {
-            all_diagnostics.extend(semantic_diagnostics);
+
+    // Initialize timing variables
+    let (semantic_duration, lint_duration) = if !ast.is_empty() {
+        // Semantic analysis stage with timing
+        let semantic_duration = {
+            let start = Instant::now();
+            if let Err(semantic_diagnostics) = analyze(&ast, &line_tracker) {
+                all_diagnostics.extend(semantic_diagnostics);
+            }
+            start.elapsed()
+        };
+
+        if args.detailed_timing {
+            println!("Semantic analysis took: {:?}", semantic_duration);
         }
-        print_ast(&ast);
-        all_diagnostics.extend(run_linter(
-            &lint_registry,
-            &ast,
-            file_path,
-            &input_code,
-            &config,
-            &line_tracker,
-        ));
-    }
+
+        if args.show_ast {
+            print_ast(&ast);
+        }
+
+        // Linting stage with timing
+        let (lint_diagnostics, lint_duration) = {
+            let start = Instant::now();
+            let diagnostics = run_linter(
+                &lint_registry,
+                &ast,
+                file_path,
+                &input_code,
+                &config,
+                &line_tracker,
+            );
+            let duration = start.elapsed();
+            (diagnostics, duration)
+        };
+
+        if args.detailed_timing {
+            println!("Linting took: {:?}", lint_duration);
+        }
+
+        all_diagnostics.extend(lint_diagnostics);
+        (semantic_duration, lint_duration)
+    } else {
+        // If AST is empty, set durations to zero
+        (std::time::Duration::ZERO, std::time::Duration::ZERO)
+    };
+
+    // Print diagnostics first
     if !all_diagnostics.is_empty() {
         print_diagnostics(file_path, &input_code, &all_diagnostics, &line_tracker);
+    }
 
-        if all_diagnostics
+    // Show summary timing if requested (after diagnostics)
+    if args.timing || args.detailed_timing {
+        let total_duration = lex_duration + parse_duration + semantic_duration + lint_duration;
+        println!("\n--- Timing Summary ---");
+        println!("Total time: {:?} ({} tokens)", total_duration, tokens.len());
+        if args.detailed_timing {
+            println!(
+                "  Lexer:    {:?} ({:.1}%)",
+                lex_duration,
+                (lex_duration.as_nanos() as f64 / total_duration.as_nanos() as f64) * 100.0
+            );
+            println!(
+                "  Parser:   {:?} ({:.1}%)",
+                parse_duration,
+                (parse_duration.as_nanos() as f64 / total_duration.as_nanos() as f64) * 100.0
+            );
+            println!(
+                "  Semantic: {:?} ({:.1}%)",
+                semantic_duration,
+                (semantic_duration.as_nanos() as f64 / total_duration.as_nanos() as f64) * 100.0
+            );
+            println!(
+                "  Linting:  {:?} ({:.1}%)",
+                lint_duration,
+                (lint_duration.as_nanos() as f64 / total_duration.as_nanos() as f64) * 100.0
+            );
+        }
+        println!("----------------------");
+    }
+
+    // Exit with error code if there are errors
+    if !all_diagnostics.is_empty()
+        && all_diagnostics
             .iter()
             .any(|diag| diag.severity == Severity::Error)
-        {
-            process::exit(1);
-        }
+    {
+        process::exit(1);
     }
 }
 
@@ -152,7 +264,12 @@ fn run_linter(
     registry.run_all(ast, file_path, source, config, line_tracker)
 }
 
-fn print_diagnostics(file_path: &str, _source: &str, diagnostics: &[Diagnostic], line_tracker: &LineTracker) {
+fn print_diagnostics(
+    file_path: &str,
+    _source: &str,
+    diagnostics: &[Diagnostic],
+    line_tracker: &LineTracker,
+) {
     for diag in diagnostics {
         let severity_str = match diag.severity {
             Severity::Error => "Error",

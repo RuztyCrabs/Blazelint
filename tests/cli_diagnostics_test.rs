@@ -7,14 +7,18 @@ use std::process::Output;
 const COMPREHENSIVE_TEST: &str = include_str!("test-bal-files/comprehensive_test.bal");
 
 fn run_cli(source: &str) -> (Output, PathBuf) {
+    run_cli_with_flags(source, &["--show-tokens", "--show-ast"])
+}
+
+fn run_cli_with_flags(source: &str, flags: &[&str]) -> (Output, PathBuf) {
     let file = tempfile::NamedTempFile::new().expect("create temp file");
     fs::write(file.path(), source).expect("write temp source");
     let file_path = file.path().to_path_buf();
-    let output = Command::cargo_bin("blazelint")
-        .expect("binary")
-        .arg(&file_path)
-        .output()
-        .expect("run blazelint");
+    let mut cmd = Command::cargo_bin("blazelint").expect("binary");
+    for flag in flags {
+        cmd.arg(flag);
+    }
+    let output = cmd.arg(&file_path).output().expect("run blazelint");
     (output, file_path)
 }
 
@@ -55,7 +59,8 @@ fn comprehensive_test_passes() {
 
 #[test]
 fn lexer_tokenizes_imports() {
-    let (output, _file_path) = run_cli("import ballerina/io;");
+    let code = "import ballerina/io;";
+    let (output, _file_path) = run_cli(code);
     let out = stdout(&output);
     assert!(out.contains("Token: (0, Import, 6)"));
     assert!(out.contains("Token: (7, Identifier(\"ballerina\"), 16)"));
@@ -90,14 +95,14 @@ fn lexer_tokenizes_bitwise_operators() {
 
 #[test]
 fn lexer_tokenizes_keywords() {
-    let code = "function main() { if (true) { while (false) { } } }";
+    let code = "function test() { if (true) while (false) return; }";
     let (output, _file_path) = run_cli(code);
     let out = stdout(&output);
     assert!(out.contains("Token: (0, Function, 8)"));
     assert!(out.contains("Token: (18, If, 20)"));
-    assert!(out.contains("Token: (30, While, 35)"));
+    assert!(out.contains("Token: (28, While, 33)"));
     assert!(out.contains("Token: (22, True, 26)"));
-    assert!(out.contains("Token: (37, False, 42)"));
+    assert!(out.contains("Token: (35, False, 40)"));
 }
 
 #[test]

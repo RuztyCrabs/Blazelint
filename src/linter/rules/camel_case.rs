@@ -45,7 +45,7 @@ impl LintRule for CamelCaseRule {
 fn check_and_enforce_camel_case(
     stmt: &Stmt,
     diagnostics: &mut Vec<Diagnostic>,
-    source: &str, // Kept for compatibility 
+    source: &str, // Kept for compatibility
     severity: Severity,
     line_tracker: &crate::utils::LineTracker,
 ) {

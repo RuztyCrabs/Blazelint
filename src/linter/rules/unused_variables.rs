@@ -65,7 +65,11 @@ struct UnusedVariableVisitor<'a> {
 
 impl<'a> UnusedVariableVisitor<'a> {
     /// Creates a new UnusedVariableVisitor with an initial (global) scope.
-    pub fn new(source: &'a str, severity: Severity, line_tracker: &'a crate::utils::LineTracker) -> Self {
+    pub fn new(
+        source: &'a str,
+        severity: Severity,
+        line_tracker: &'a crate::utils::LineTracker,
+    ) -> Self {
         Self {
             scopes: vec![HashMap::new()],
             diagnostics: Vec::new(),

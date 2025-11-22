@@ -236,6 +236,43 @@ The project uses the following key dependencies:
     bash scripts/check.sh
     ```
 
+## Release Process
+
+BlazeLint uses a **tag-driven release workflow** for simplicity. To cut a new release:
+
+1. Decide the next semantic version (e.g. `1.2.3`).
+2. Update the version in `Cargo.toml` (or use the existing bump workflow via GitHub UI if preferred).
+3. Ensure all checks pass locally:
+    ```bash
+    bash scripts/check.sh
+    ```
+4. Commit and push the version change to `main`.
+5. Create and push the tag matching the version (must start with `v`):
+    ```bash
+    git tag -a v1.2.3 -m "Release v1.2.3"
+    git push origin v1.2.3
+    ```
+6. GitHub Actions workflow `Publish crate` (release-crate.yml) will:
+    - Verify the tag matches `Cargo.toml`.
+    - Build and test the project.
+    - Package a Linux binary.
+    - Create a GitHub Release with artifacts.
+    - Publish the crate to crates.io (requires `CRATES_IO_TOKEN` secret).
+
+### Dry Run
+You can simulate locally before tagging:
+```bash
+cargo publish --dry-run
+```
+
+### Notes
+- Tag pattern: `v*.*.*` (e.g. `v0.3.1`).
+- If the tag does not match the `Cargo.toml` version, the build fails early.
+- Existing automated workflows (`bump-version.yml` + PR + tag) still work if you prefer that path.
+
+For multi-platform binaries, extend `simple-release.yml` with matrix builds and upload additional artifacts.
+
+
 ### Adding New Rules
 
 When adding a new linter rule:
