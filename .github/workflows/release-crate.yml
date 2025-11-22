@@ -42,7 +42,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: test "v$(toml get Cargo.toml package.version --raw)" = "${{ github.ref_name }}"
 
-      - name: Preflight: fmt, clippy, tests
+      - name: "Preflight: fmt, clippy, tests"
         run: |
           rustup component add rustfmt clippy
           cargo fmt --all -- --check
