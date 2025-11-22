@@ -37,7 +37,8 @@ fn test_version_flag_long() {
     run_blazelint_standalone(&["--version"])
         .success()
         .stdout(predicates::str::contains("blazelint"))
-        .stdout(predicates::str::contains("0.2.2"));
+        // Match semantic version (e.g., 0.3.0, 1.0.0) without hardcoding
+        .stdout(predicates::str::is_match(r"blazelint \d+\.\d+\.\d+").unwrap());
 }
 
 #[test]
@@ -45,7 +46,7 @@ fn test_version_flag_short() {
     run_blazelint_standalone(&["-V"])
         .success()
         .stdout(predicates::str::contains("blazelint"))
-        .stdout(predicates::str::contains("0.2.2"));
+        .stdout(predicates::str::is_match(r"blazelint \d+\.\d+\.\d+").unwrap());
 }
 
 #[test]
