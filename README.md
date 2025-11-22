@@ -9,6 +9,7 @@
 
 ## Table of Contents
 
+- [Benchmarks](#benchmarks)
 - [Documentation](#documentation)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -25,6 +26,34 @@
 - [Contributing](#contributing)
 - [TODO](#todo)
 - [License](#license)
+
+## Benchmarks
+
+Followings are the benchmarks we achieved using the release version 0.3.0:
+
+### Execution Time Comparison
+
+| Tool              | Total Execution Time | Tokens/Second | Performance vs Blazelint |
+|-------------------|-----------------------|---------------|--------------------------|
+| **Blazelint**     | 284ms                | 2,290,000     | Baseline (1×)           |
+| **Ballerina Scan**| 8m 04.41s (484.41s)  | 1,341         | 1,705× slower           |
+| **ESLint**        | 3.6s                 | 188,900       | 12.7× slower            |
+
+### Internal Performance Breakdown
+
+| Stage              | Execution Time | Percentage of Total | Tokens Processed |
+|--------------------|----------------|---------------------|------------------|
+| Lexical Analysis   | 80.75ms        | 26.9%              | 650,306          |
+| Parsing            | 187.90ms       | 62.6%              | 650,306          |
+| Semantic Analysis  | 22.87ms        | 7.6%               | 650,306          |
+| Linting Rules      | 8.87ms         | 3.0%               | 650,306          |
+| **Total**          | **300.39ms**   | **100.0%**         | **650,306**      |
+
+### Notes on Benchmark Context
+
+- **Grammar Coverage**: Blazelint currently implements approximately 23% of the full Ballerina grammar. The benchmarks reflect this partial implementation, and performance numbers should be considered with this limitation in mind.
+- **Lexer Scalability**: The lexer uses a switch-case dispatch mechanism, ensuring constant time complexity per character. Adding new lexemes will not significantly impact performance.
+- **Parser Scalability**: Uses a recursive descent parser is designed for modular expansion. While adding new grammar rules increases the depth of recursive calls, the architecture supports efficient scaling with minimal overhead for additional rules.
 
 ## Documentation
 
@@ -57,9 +86,9 @@ blazelint path/to/file.bal
 ```
 
 > [!NOTE]
-> Use the limited subset document in the [BNF](docs/BNF.md) when defining Ballerina syntax to be linted.
+> Use the limited subset documented in the [BNF](docs/BNF.md) when defining Ballerina syntax to be linted.
 
-The tool prints the input program, a token stream, the parsed AST, and exits or emits diagnostics if there is any and exits with a non-zero status.
+The tool prints the detected diagnostics if there is any and exits with a non-zero status or exits with a zero status with no prints to stdout if the passed file is clean.
 
 ### Development Usage
 
@@ -78,9 +107,21 @@ For a quick smoke test, you can reuse the sample program in `tests/test-bal-file
 blazelint tests/test-bal-files/simple_errors.bal
 ```
 
+### Timing Instrumentation
+
+Blazelint supports timing analysis for each pipeline stage. Use the following flags:
+
+- `--timing`: Displays the total time taken by each pipeline stage (lexing, parsing, semantic analysis, linting).
+- `--detailed-timing`: Provides a detailed breakdown, including per-rule linting durations.
+
+Example:
+```bash
+blazelint --timing path/to/file.bal
+```
+
 ## Configuration
 
-### Configuration File
+#### Configuration File
 
 Blazelint looks for a `.blazerc` configuration file in the current directory or any parent directory. The configuration uses TOML format:
 
@@ -235,67 +276,6 @@ The project uses the following key dependencies:
     ```bash
     bash scripts/check.sh
     ```
-
-## Release Process
-
-BlazeLint uses a **tag-driven release workflow** for simplicity. To cut a new release:
-
-1. Decide the next semantic version (e.g. `1.2.3`).
-2. Update the version in `Cargo.toml` (or use the existing bump workflow via GitHub UI if preferred).
-3. Ensure all checks pass locally:
-    ```bash
-    bash scripts/check.sh
-    ```
-4. Commit and push the version change to `main`.
-5. Create and push the tag matching the version (must start with `v`):
-    ```bash
-    git tag -a v1.2.3 -m "Release v1.2.3"
-    git push origin v1.2.3
-    ```
-6. GitHub Actions workflow `Publish crate` (release-crate.yml) will:
-    - Verify the tag matches `Cargo.toml`.
-    - Build and test the project.
-    - Package a Linux binary.
-    - Create a GitHub Release with artifacts.
-    - Publish the crate to crates.io (requires `CRATES_IO_TOKEN` secret).
-
-### Dry Run
-You can simulate locally before tagging:
-```bash
-cargo publish --dry-run
-```
-
-### Notes
-- Tag pattern: `v*.*.*` (e.g. `v0.3.1`).
-- If the tag does not match the `Cargo.toml` version, the build fails early.
-- Existing automated workflows (`bump-version.yml` + PR + tag) still work if you prefer that path.
-
-For multi-platform binaries, extend `simple-release.yml` with matrix builds and upload additional artifacts.
-
-
-### Adding New Rules
-
-When adding a new linter rule:
-
-1. **Create the rule**: Implement the `LintRule` trait in `src/linter/rules/`
-2. **Register the rule**: Add to the rule registry in `src/lib.rs`
-3. **Add default configuration**: Update `Config::default()` in `src/config.rs`
-4. **Add tests**: Include unit tests and integration tests
-5. **Update docs**: Add rule to the Available Rules table above
-
-### Configuration Changes
-
-When modifying configuration:
-
-1. **Update schema**: Modify configuration structs in `src/config.rs`
-2. **Update defaults**: Ensure backward compatibility in `Config::default()`
-3. **Update validation**: Add appropriate validation logic in `validate_config()`
-4. **Update tests**: Test configuration loading and validation
-5. **Update documentation**: Update configuration examples and rule tables
-
-## TODO
-
-Roadmap of the project can be viewed from [here](TODO.md).
 
 ## License
 

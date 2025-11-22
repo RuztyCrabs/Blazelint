@@ -41,12 +41,15 @@ This Software Requirements Specification (SRS) captures the agreed scope, stakeh
 == 1 Introduction
 
 === 1.1 Purpose
-Blazelint is a work-in-progress high performance linter for the Ballerina programming language. This document defines the functional and nonfunctional requirements that the Blazelint system shall satisfy.
+Blazelint is a high performance reference linter for the Ballerina programming language. This document defines the functional and nonfunctional requirements that the Blazelint system shall satisfy.
 
 === 1.2 Intended Audience
 - Core maintainers who extend the linter's internals and maintain the Rust code base.
 - Contributors ramping onto the project who need a definitive description of current and planned behaviour.
 - Stakeholders consuming lint results—developers.
+- University students and lecturers exploring linter implementations.
+- Companies evaluating mechanisms for creating DSLs (Domain Specific Languages).
+- Individuals interested in building static analysis tools for programming languages.
 
 === 1.3 Intended Use
 This SRS guides implementation, testing, and roadmap planning for Blazelint. It serves as:
@@ -88,6 +91,9 @@ Blazelint operates as a standalone CLI binary built in Rust. It reads Ballerina 
 - Enforce type rules for primitive declarations, assignments, control flow, and function returns.
 - Exit with a non-zero status whenever diagnostics are present.
 - Prepare the code base for future lint rule execution, configuration, and richer reporting.
+- *Measure and display performance metrics*:
+  - `--timing`: Displays the total time taken by each pipeline stage (lexing, parsing, semantic analysis, linting).
+  - `--detailed-timing`: Provides a detailed breakdown, including per-rule linting durations.
 
 === 2.4 User Classes and Characteristics
 - Core maintainers: Rust developers extending the linter internals, comfortable with compiler architecture and typst documentation.
@@ -98,6 +104,8 @@ Blazelint operates as a standalone CLI binary built in Rust. It reads Ballerina 
 - Target platforms: Linux, macOS, and Windows environments or newer (optionally Rust toolchain 1.70 or later is required if building form source).
 - Execution context: Terminal sessions or scripted CI environments capable of executing native binaries and accessing the filesystem.
 - Input artifacts: Text files encoded in UTF-8 following the Ballerina grammar subset defined in `BNF.md`.
+- *Deterministic builds*: Enforced using the `--locked` flag to ensure reproducibility.
+- *Checksum verification*: Release artifacts include SHA-256 checksums for integrity validation.
 
 === 2.6 Design and Implementation Constraints
 - Implemented exclusively in Rust 2021 edition; no runtime dependencies beyond the standard library.
@@ -112,7 +120,8 @@ Primary references include the project README and BNF grammar document. Addition
 - Users possess access rights to read the source files provided to the CLI.
 - Input files are syntactically plain text with Unix or Windows line endings.
 - Future lint rule execution will build on the existing AST and semantic outputs without altering upstream parser behaviour.
-- Integration with IDEs or editors, if pursued later, will consume the CLI output or LSP protocol rather than embedding the linter directly.
+- Integration with IDEs or editors, if pursued later, will consume the CLI output.
+- Production version available at [crates.io](https://crates.io/crates/blazelint).
 
 == 3 Specific Requirements
 
@@ -127,6 +136,7 @@ The CLI entry point coordinates reading the source file, executing the pipeline,
 - FR-03: When the analysis pipeline completes without diagnostics, the system shall print the raw input, the lexed token stream, and the formatted AST to stdout.
 - FR-04: The application shall terminate with a non-zero exit code whenever lexer, parser, or semantic diagnostics are produced.
 - FR-FUT-01: The CLI shall accept additional arguments to control linting scope (file or directory), configuration file path, and output format once lint rules are introduced (per README remaining tasks).
+- FR-18: The CLI shall support usage flags such as `--timing` and `--detailed-timing` for performance insights.
 
 ==== 3.1.2 Lexical Analysis
 The lexer converts raw input into labelled tokens while detecting malformed constructs.
@@ -242,11 +252,14 @@ No persistent database is required. The tool operates on in-memory representatio
 - Accept UTF-8 input sources, ensuring multi-byte characters are counted accurately when computing spans and caret highlights.
 
 === 4.4 Risk Management (FMEA Overview)
-| Risk ID | Failure Mode | Effect | Mitigation |
-| --- | --- | --- | --- |
-| R-01 | Grammar expansion introduces ambiguity | Parser rejects valid programs | Add parser unit tests and AST snapshots before expanding grammar; stage changes behind feature flags |
-| R-02 | Semantic rule growth impacts performance | Slower lint runs degrade developer experience | Profile semantic pass, cache scope lookups, and maintain performance benchmarks | 
-| R-03 | Missing lint configuration | Users cannot tailor severity to workflows | Design `.blazerc` early, define default policies, and document override behaviour |
+
+#table(
+  columns: 4,
+  [Risk ID], [Failure Mode], [Effect], [Mitigation],
+  [R-01], [Grammar expansion introduces ambiguity], [Parser rejects valid programs], [Add parser unit tests and AST snapshots before expanding grammar; stage changes behind feature flags],
+  [R-02], [Semantic rule growth impacts performance], [Slower lint runs degrade developer experience], [Profile semantic pass, cache scope lookups, and maintain performance benchmarks],
+  [R-03], [Missing lint configuration], [Users cannot tailor severity to workflows], [Design `.blazerc` early, define default policies, and document override behaviour],
+)
 
 == 5 Appendices
 
@@ -261,8 +274,3 @@ No persistent database is required. The tool operates on in-memory representatio
 - #strong[UC-02: CI Validation] – Automation job runs the binary on repository sources, fails the pipeline when non-zero exit status is returned.
 - #strong[UC-03: Extend Semantic Rules] – Maintainer author new semantic checks referencing this SRS for acceptance criteria and updates integration tests.
 Future visual diagrams may be generated from Typst or Mermaid blocks and linked here when available.
-
-=== 5.3 To Be Determined (TBD) List
-- TBD-01: Specific `.blazerc` configuration schema (keys, severity mapping format).
-- TBD-02: Lint rule catalogue and naming conventions for the MVP.
-- TBD-03: Additional output formats (JSON schema) for diagnostics.

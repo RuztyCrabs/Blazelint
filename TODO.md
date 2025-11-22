@@ -1,6 +1,4 @@
-## Project Roadmap 
-
-### Completed:
+## TODO
 
 - [x] Lexer: Fully implemented and capable of tokenizing Ballerina syntax.
 - [x] Parser: Implemented with support for:
@@ -19,7 +17,6 @@
 - [x] **Linter Rules:** Define and implement specific linting rules (e.g., naming conventions, code style, best practices).
 - [x] **Reporting/Output:** Create a mechanism to report linting issues to the user (e.g., nicely formatted console output).
 - [x] **Configuration:** Allow users to configure linting rules using .blazerc file(e.g., enable/disable rules, set severity).
+- [x] **CLI Arguments:** Handle command-line arguments for specifying files/directories to lint, configuration files, etc.
 
-### Remainings for the MVP: 
-
-- [ ] **CLI Arguments:** Handle command-line arguments for specifying files/directories to lint, configuration files, etc.
+All requirements for the MVP are completed as of now.
