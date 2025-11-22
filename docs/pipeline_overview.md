@@ -502,3 +502,52 @@ flowchart LR
         style D fill:#fff3e0,stroke:#f57c00
         style H fill:#e3f2fd,stroke:#1976d2
 ```
+
+## Updates in v0.3.0
+
+### Timing Instrumentation
+- Added `--timing` and `--detailed-timing` flags to measure and display performance metrics for each pipeline stage.
+- Timing data is integrated into the diagnostics pipeline, providing insights into lexing, parsing, semantic analysis, and linting durations.
+
+### Workflow Enhancements
+- Enforced deterministic builds using `--locked` to ensure reproducibility.
+- Automated tag-driven releases with preflight checks for formatting, linting, and tests.
+- Added checksum verification for release artifacts.
+
+### Enhanced Diagnostics
+- Global line tracking system ensures precise error reporting with O(log n) position lookups.
+- Diagnostics now include detailed timing information when `--detailed-timing` is enabled.
+
+### Updated Pipeline Diagram
+
+```mermaid
+flowchart TD
+    Source["Source File\nmain.rs"] --> Config["Configuration Loading\nconfig::load_config"]
+    Config --> LineTracker["Line Tracking Setup\nLineTracker::new(source)"]
+    LineTracker --> Lex["Tokenisation\nlexer::Lexer"]
+    Lex -->|token triples| TokenStream["Vec of (start, token, end) tuples"]
+    TokenStream --> Parse["Parsing\nparser::Parser"]
+    Parse -->|AST statements| Ast["AST\nast::Stmt list"]
+    Ast --> Sem["Semantic Analysis\nsemantic::analyze(tracker)"]
+    Sem -->|validated AST| Rules["Rule Engine\nLintRuleRegistry(tracker)"]
+    Rules -->|linter diagnostics| Ready["Analysis complete"]
+
+    Config -. Config Error .-> ConfigDiag[Configuration Diagnostic]
+    Lex -. Err(LexError) .-> LexDiag[Lexical Diagnostic]
+    Parse -. Err(ParseError) .-> ParseDiag[Parse Diagnostic]
+    Sem -. Err(Semantic) .-> SemDiag[Semantic Diagnostic]
+    Rules -. Rule Violations .-> RuleDiag[Rule Diagnostic]
+
+    ConfigDiag --> Collect["Vec of diagnostics"]
+    LexDiag --> Collect
+    ParseDiag --> Collect
+    SemDiag --> Collect
+    RuleDiag --> Collect
+    Collect --> Render["Optimized Diagnostic Display\nprint_diagnostics(tracker)"]
+
+    LineTracker -.->|"O(1) position lookups"| Render
+    Timing -.->|"Stage durations"| Render
+```
+
+* Added timing instrumentation to the pipeline for detailed performance insights.
+* Updated workflow to ensure reproducibility and automation.
