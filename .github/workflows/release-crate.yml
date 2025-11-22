@@ -56,7 +56,8 @@ jobs:
         run: |
           install -d dist
           cp target/release/blazelint dist/blazelint
-          tar -C dist -czf dist/blazelint-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz blazelint
+          tar -C dist -czf dist/blazelint-${{ github.ref_name }}-x86_64-linux-gnu.tar.gz blazelint
+          sha256sum dist/blazelint-${{ github.ref_name }}-x86_64-linux-gnu.tar.gz > dist/blazelint-${{ github.ref_name }}.sha256
           rm dist/blazelint
 
       - name: Compile SRS PDF
@@ -74,6 +75,7 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             dist/blazelint-${{ github.ref_name }}-x86_64-linux-gnu.tar.gz
+            dist/blazelint-${{ github.ref_name }}.sha256
             dist/BlazeLint-SRS.pdf
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,4 +86,4 @@ jobs:
       - name: Publish crate
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-        run: cargo publish --allow-dirty
+        run: cargo publish
