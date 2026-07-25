@@ -114,6 +114,12 @@ impl Parser {
             return self.configurable_declaration();
         }
 
+        // Destructuring variable declarations (`var {a,b} = e;`, `[a,b] = e;`,
+        // `Rec {x,y} = r;`).
+        if self.starts_destructure() {
+            return self.destructure_decl();
+        }
+
         // Consume any run of leading qualifiers (public/isolated/readonly/...).
         let (is_public, qualifiers) = self.parse_leading_qualifiers()?;
 
@@ -132,6 +138,125 @@ impl Parser {
             }
             _ => self.statement(),
         }
+    }
+
+    /// Detects the start of a destructuring variable declaration:
+    /// `var {..}`/`var [..]`, an untyped `[..] =`, or a typed `<name> {..}`.
+    fn starts_destructure(&self) -> bool {
+        if matches!(self.peek(), Some(Token::Var))
+            && matches!(self.peek_n(1), Some(Token::LBrace | Token::LBracket))
+        {
+            return true;
+        }
+        if self.check(&Token::LBracket) {
+            if let Some(end) = self.scan_balanced(0, &Token::LBracket, &Token::RBracket) {
+                if matches!(self.peek_n(end), Some(Token::Eq)) {
+                    return true;
+                }
+            }
+        }
+        if matches!(self.peek(), Some(Token::Identifier(_))) {
+            if let Some(end) = self.skip_type(0) {
+                if matches!(self.peek_n(end), Some(Token::LBrace)) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Parses a destructuring variable declaration, collecting the bound names.
+    fn destructure_decl(&mut self) -> ParseResult<Stmt> {
+        let start = self.current_span().start;
+        self.match_token(&[Token::Var])?; // optional `var`
+                                          // Optional leading type (`Rec {x, y} = ...`).
+        if !self.check(&Token::LBrace) && !self.check(&Token::LBracket) {
+            let _ = self.parse_type_descriptor()?;
+        }
+        let mut names = Vec::new();
+        let mut name_spans = Vec::new();
+        self.parse_binding_pattern(&mut names, &mut name_spans)?;
+        self.consume(
+            Token::Eq,
+            "Expected '=' in destructuring declaration",
+            Some("'='"),
+        )?;
+        let initializer = self.expression()?;
+        self.consume(
+            Token::Semicolon,
+            "Expected ';' after destructuring declaration",
+            Some("';'"),
+        )?;
+        let end = self.previous_span().end;
+        Ok(Stmt::DestructureDecl {
+            names,
+            name_spans,
+            initializer,
+            span: start..end,
+        })
+    }
+
+    /// Parses a list `[..]` or mapping `{..}` binding pattern, appending every
+    /// bound identifier (including nested and rest bindings) to `names`.
+    fn parse_binding_pattern(
+        &mut self,
+        names: &mut Vec<String>,
+        spans: &mut Vec<Span>,
+    ) -> ParseResult<()> {
+        if self.match_token(&[Token::LBrace])? {
+            while !self.check(&Token::RBrace) && !self.is_at_end() {
+                if self.match_token(&[Token::DotDotDot])? {
+                    names.push(self.expect_ident("Expected name after '...'")?);
+                    spans.push(self.previous_span());
+                } else if self.check(&Token::LBrace) || self.check(&Token::LBracket) {
+                    self.parse_binding_pattern(names, spans)?;
+                } else {
+                    let key = self.expect_ident_or_string("Expected field in binding pattern")?;
+                    let key_span = self.previous_span();
+                    if self.match_token(&[Token::Colon])? {
+                        // `key: <nested-pattern>`
+                        if self.check(&Token::LBrace) || self.check(&Token::LBracket) {
+                            self.parse_binding_pattern(names, spans)?;
+                        } else {
+                            names.push(self.expect_ident("Expected binding after ':'")?);
+                            spans.push(self.previous_span());
+                        }
+                    } else {
+                        names.push(key);
+                        spans.push(key_span);
+                    }
+                }
+                if !self.match_token(&[Token::Comma])? {
+                    break;
+                }
+            }
+            self.consume(
+                Token::RBrace,
+                "Expected '}' in binding pattern",
+                Some("'}'"),
+            )?;
+        } else if self.match_token(&[Token::LBracket])? {
+            while !self.check(&Token::RBracket) && !self.is_at_end() {
+                if self.match_token(&[Token::DotDotDot])? {
+                    names.push(self.expect_ident("Expected name after '...'")?);
+                    spans.push(self.previous_span());
+                } else if self.check(&Token::LBrace) || self.check(&Token::LBracket) {
+                    self.parse_binding_pattern(names, spans)?;
+                } else {
+                    names.push(self.expect_ident("Expected binding in list pattern")?);
+                    spans.push(self.previous_span());
+                }
+                if !self.match_token(&[Token::Comma])? {
+                    break;
+                }
+            }
+            self.consume(
+                Token::RBracket,
+                "Expected ']' in binding pattern",
+                Some("']'"),
+            )?;
+        }
+        Ok(())
     }
 
     /// Consumes any run of annotation attachments (`@tag`, `@mod:tag { ... }`),
@@ -632,6 +757,13 @@ impl Parser {
             let mut fields = Vec::new();
             if !self.check(&Token::RBrace) {
                 loop {
+                    // Rest field `...rest`.
+                    if self.match_token(&[Token::DotDotDot])? {
+                        let name = self.expect_ident("Expected name after '...'")?;
+                        fields.push((String::new(), MatchPattern::Rest(name)));
+                        self.match_token(&[Token::Comma])?;
+                        break;
+                    }
                     let key = self.expect_ident_or_string("Expected key in mapping pattern")?;
                     // `{ key: pattern }` or shorthand `{ key }` (== `{ key: key }`).
                     let value = if self.match_token(&[Token::Colon])? {
@@ -856,12 +988,7 @@ impl Parser {
             None
         };
 
-        self.consume(
-            Token::LBrace,
-            "Expected '{' before function body",
-            Some("'{'"),
-        )?;
-        let body = self.block()?;
+        let body = self.named_function_body()?;
         let body_end_span = self.previous_span();
         Ok(Stmt::Function {
             is_public,
@@ -872,6 +999,31 @@ impl Parser {
             body,
             span: keyword_span.start..body_end_span.end,
         })
+    }
+
+    /// Parses a named function/method body: either a `{ block }` or an
+    /// expression body `=> expr;`.
+    fn named_function_body(&mut self) -> ParseResult<Vec<Stmt>> {
+        if self.match_token(&[Token::Arrow])? {
+            let expr = self.expression()?;
+            let span = expr.span().clone();
+            self.consume(
+                Token::Semicolon,
+                "Expected ';' after expression-bodied function",
+                Some("';'"),
+            )?;
+            Ok(vec![Stmt::Return {
+                value: Some(expr),
+                span,
+            }])
+        } else {
+            self.consume(
+                Token::LBrace,
+                "Expected '{' before function body",
+                Some("'{'"),
+            )?;
+            self.block()
+        }
     }
 
     /// Parses a comma-separated parameter list (without the surrounding
@@ -1048,12 +1200,13 @@ impl Parser {
             } else {
                 None
             };
-            self.consume(
-                Token::LBrace,
-                "Expected '{' before method body",
-                Some("'{'"),
-            )?;
-            let body = self.block()?;
+            // Methods may be block-bodied or (rarely) abstract signatures ending
+            // in `;`; also support expression bodies `=> expr;`.
+            let body = if self.match_token(&[Token::Semicolon])? {
+                Vec::new()
+            } else {
+                self.named_function_body()?
+            };
             let end = self.previous_span().end;
             return Ok(Some(Stmt::Function {
                 is_public: false,
@@ -1564,6 +1717,17 @@ impl Parser {
     /// Parses a unary expression (`!`, unary `-`, `+`, `~`), plus the check/error
     /// and `typeof`/`let` prefix expressions.
     fn unary(&mut self) -> ParseResult<Expr> {
+        // Worker receive action `<- worker`.
+        if self.match_token(&[Token::LeftArrow])? {
+            let start = self.previous_span().start;
+            let operand = self.unary()?;
+            let end = operand.span().end;
+            return Ok(Expr::Check {
+                keyword: "<-".to_string(),
+                expr: Box::new(operand),
+                span: start..end,
+            });
+        }
         // check / checkpanic / trap / wait prefixes.
         if matches!(
             self.peek(),
@@ -1625,14 +1789,17 @@ impl Parser {
             if self.match_token(&[Token::LParen])? {
                 let open_span = self.previous_span();
                 expr = self.finish_call(expr, open_span)?;
-            } else if self.match_token(&[Token::Dot])? {
-                let method_token = self.advance_owned()?;
-                let method_name = match method_token {
-                    Token::Identifier(name) => name,
-                    _ => {
-                        return Err(self
-                            .error_previous("Expected method name after '.'", Some("identifier")))
-                    }
+            } else if self.check(&Token::Dot)
+                || (self.check(&Token::Question) && matches!(self.peek_n(1), Some(Token::Dot)))
+            {
+                // `.member`, optional-chaining `?.member`, or annotation access
+                // `.@annot`.
+                self.match_token(&[Token::Question])?; // optional `?` of `?.`
+                self.consume(Token::Dot, "Expected '.'", Some("'.'"))?;
+                let method_name = if self.match_token(&[Token::At])? {
+                    self.expect_ident("Expected annotation name after '.@'")?
+                } else {
+                    self.expect_ident("Expected method or field name after '.'")?
                 };
 
                 if self.match_token(&[Token::LParen])? {
@@ -2599,6 +2766,24 @@ impl Parser {
                     self.error_previous(&format!("Expected type, found {:?}", t), Some("type"))
                 )
             }
+        };
+
+        // A builtin type may be qualified into a subtype: `int:Unsigned32`,
+        // `string:Char`, `xml:Element`, etc.
+        let base = if let TypeDescriptor::Basic(n) = &base {
+            if self.check(&Token::Colon) && matches!(self.peek_n(1), Some(Token::Identifier(_))) {
+                let module = n.clone();
+                self.advance()?; // ':'
+                let member = self.expect_ident("Expected type name after ':'")?;
+                TypeDescriptor::Qualified {
+                    module,
+                    name: member,
+                }
+            } else {
+                base
+            }
+        } else {
+            base
         };
 
         // Optional generic type arguments on a named/qualified type.
@@ -4193,5 +4378,103 @@ mod tests {
                 ..
             } if field == "from"
         ));
+    }
+
+    // ---- Real-world grammar constructs ----------------------------------------
+
+    #[test]
+    fn parses_typed_const() {
+        assert!(matches!(
+            &parse_ok("const int MAX = 5;")[0],
+            Stmt::ConstDecl {
+                type_annotation: Some(_),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_dotted_import_with_alias() {
+        assert!(matches!(
+            &parse_ok("import ballerina/lang.runtime as rt;")[0],
+            Stmt::Import { package_path, .. } if package_path == &vec!["ballerina".to_string(), "lang".to_string(), "runtime".to_string()]
+        ));
+    }
+
+    #[test]
+    fn parses_parenless_if_and_range_foreach() {
+        let body = fn_body("function f() { foreach int i in 0...9 { if i > 5 { } } }");
+        let Stmt::Foreach {
+            iterable, body: fb, ..
+        } = &body[0]
+        else {
+            panic!("expected foreach")
+        };
+        assert!(matches!(iterable, Expr::Range { .. }));
+        assert!(matches!(&fb[0], Stmt::If { .. }));
+    }
+
+    #[test]
+    fn parses_destructuring_declarations() {
+        assert!(matches!(
+            &parse_ok("function f() { var [a, b] = t; }")
+                .into_iter()
+                .next()
+                .and_then(|s| if let Stmt::Function { body, .. } = s { body.into_iter().next() } else { None })
+                .unwrap(),
+            Stmt::DestructureDecl { names, .. } if names == &vec!["a".to_string(), "b".to_string()]
+        ));
+        // Typed mapping destructure.
+        let body = fn_body("function f() { Rec {x, y} = r; }");
+        assert!(matches!(&body[0], Stmt::DestructureDecl { names, .. } if names.len() == 2));
+    }
+
+    #[test]
+    fn parses_optional_and_annotation_access() {
+        assert!(matches!(
+            var_init("string? a = user?.address;"),
+            Expr::FieldAccess { field, .. } if field == "address"
+        ));
+        assert!(matches!(
+            var_init("var a = t.@annot;"),
+            Expr::FieldAccess { field, .. } if field == "annot"
+        ));
+    }
+
+    #[test]
+    fn parses_worker_receive_and_expression_bodied_function() {
+        assert!(matches!(
+            var_init("int x = <- w1;"),
+            Expr::Check { keyword, .. } if keyword == "<-"
+        ));
+        let stmts = parse_ok("function double(int x) returns int => x * 2;");
+        assert!(matches!(
+            &stmts[0],
+            Stmt::Function { body, .. } if matches!(body.first(), Some(Stmt::Return { .. }))
+        ));
+    }
+
+    #[test]
+    fn parses_quoted_identifier_and_builtin_subtype() {
+        // `'int` is a quoted identifier; `int:Signed32` is a subtype.
+        assert!(matches!(
+            &parse_ok("int 'version = 1;")[0],
+            Stmt::VarDecl { name, .. } if name == "'version"
+        ));
+        assert!(matches!(
+            var_type("int:Signed32 x = y;"),
+            TypeDescriptor::Qualified { module, name } if module == "int" && name == "Signed32"
+        ));
+    }
+
+    #[test]
+    fn parses_mapping_shorthand_and_spread() {
+        let e = var_init("var m = {name, age: 30, ...rest};");
+        let Expr::MapLiteral { entries, .. } = e else {
+            panic!("expected map literal")
+        };
+        assert_eq!(entries.len(), 3);
+        // Shorthand `name` becomes `name: name`.
+        assert!(matches!(&entries[0].1, Expr::Variable { name, .. } if name == "name"));
     }
 }

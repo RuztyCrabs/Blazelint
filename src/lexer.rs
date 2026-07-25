@@ -96,6 +96,7 @@ pub enum Token {
     DotDotLt,   // ..<
     Arrow,      // =>
     RightArrow, // ->
+    LeftArrow,  // <- (worker receive)
 
     // Delimiters
     LParen,
@@ -553,6 +554,8 @@ impl Iterator for Lexer<'_> {
                     Ok(self.create_token(Token::LtLt))
                 } else if self.match_char('=') {
                     Ok(self.create_token(Token::Le))
+                } else if self.match_char('-') {
+                    Ok(self.create_token(Token::LeftArrow))
                 } else {
                     Ok(self.create_token(Token::Lt))
                 }
