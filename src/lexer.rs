@@ -93,6 +93,7 @@ pub enum Token {
     Question,
     QuestionColon,
     DotDotDot,
+    DotDotLt,   // ..<
     Arrow,      // =>
     RightArrow, // ->
 
@@ -107,6 +108,7 @@ pub enum Token {
     Semicolon,
     Comma,
     Dot,
+    At, // @ (annotation attachment)
 
     // Literals
     Number(f64),
@@ -153,6 +155,16 @@ impl<'input> Lexer<'input> {
             match c {
                 ' ' | '\r' | '\t' | '\n' => {
                     self.advance();
+                }
+                // Ballerina markdown documentation lines (`# ...`) are treated as
+                // comments and skipped to end of line.
+                '#' => {
+                    while self.peek() != Some(&'\n') && !self.is_at_end() {
+                        self.advance();
+                    }
+                    if self.peek() == Some(&'\n') {
+                        self.advance();
+                    }
                 }
                 '/' => {
                     let comment_start = self.current;
@@ -456,11 +468,17 @@ impl Iterator for Lexer<'_> {
             ':' => Ok(self.create_token(Token::Colon)),
             ';' => Ok(self.create_token(Token::Semicolon)),
             ',' => Ok(self.create_token(Token::Comma)),
+            '@' => Ok(self.create_token(Token::At)),
             '.' => {
-                if self.peek() == Some(&'.') && self.peek_next() == Some('.') {
-                    self.advance(); // consume second '.'
-                    self.advance(); // consume third '.'
-                    Ok(self.create_token(Token::DotDotDot))
+                if self.match_char('.') {
+                    // `...` inclusive range or `..<` half-open range.
+                    if self.match_char('.') {
+                        Ok(self.create_token(Token::DotDotDot))
+                    } else if self.match_char('<') {
+                        Ok(self.create_token(Token::DotDotLt))
+                    } else {
+                        Ok(self.create_token(Token::DotDotDot))
+                    }
                 } else {
                     Ok(self.create_token(Token::Dot))
                 }
@@ -552,6 +570,19 @@ impl Iterator for Lexer<'_> {
                 } else {
                     Ok(self.create_token(Token::Pipe))
                 }
+            }
+            '\'' => {
+                // Quoted identifier `'ident` — lets reserved words be used as
+                // identifiers. The leading quote is kept in the token text so it
+                // stays distinct from the corresponding keyword.
+                while self
+                    .peek()
+                    .is_some_and(|&c| c.is_ascii_alphanumeric() || c == '_')
+                {
+                    self.advance();
+                }
+                let text = self.input[self.start..self.current].to_string();
+                Ok(self.create_token(Token::Identifier(text)))
             }
             '"' => self.string().map(|t| self.create_token(t)), // Scan string literal
             '`' => self.string_template().map(|t| self.create_token(t)), // Scan string template

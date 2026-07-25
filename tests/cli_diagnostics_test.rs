@@ -240,10 +240,10 @@ fn lexer_reports_malformed_exponent() {
 
 #[test]
 fn lexer_reports_unexpected_character() {
-    let (output, file_path) = run_cli("var a = 1 @;");
+    let (output, file_path) = run_cli("var a = 1 \\;");
     assert!(!output.status.success());
     let out = stdout(&output);
-    assert!(out.contains("Error: Unexpected character: '@'"));
+    assert!(out.contains("Error: Unexpected character: '\\'"));
     assert!(out.contains(&format!("  --> {}:1:11", file_path.display())));
 }
 
@@ -375,12 +375,16 @@ fn parser_reports_unexpected_eof_in_block() {
 }
 
 #[test]
-fn parser_reports_const_with_type() {
-    let (output, file_path) = run_cli("const int a = 1;");
-    assert!(!output.status.success());
+fn parser_accepts_typed_const() {
+    // Typed constants (`const int a = 1;`) are valid Ballerina and must parse
+    // and analyze cleanly.
+    let (output, _file_path) = run_cli("const int a = 1;");
     let out = stdout(&output);
-    assert!(out.contains("Error: const declarations cannot have a type annotation"));
-    assert!(out.contains(&format!("  --> {}:1:1", file_path.display())));
+    assert!(
+        !out.contains("Error:"),
+        "typed const should be accepted: {out}"
+    );
+    assert!(out.contains("ConstDecl"));
 }
 
 // ============================================================================

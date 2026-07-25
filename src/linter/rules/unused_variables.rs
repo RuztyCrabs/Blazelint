@@ -235,6 +235,21 @@ impl<'a> UnusedVariableVisitor<'a> {
                 self.visit_stmts(on_fail_body);
                 self.exit_scope();
             }
+            Stmt::ClassDef { members, .. } | Stmt::ServiceDecl { members, .. } => {
+                // Visit method bodies and field initializers so their references
+                // to module-level variables are tracked. Fields themselves are not
+                // declared for unused-tracking (accessed via `self`, not by name).
+                for member in members {
+                    match member {
+                        Stmt::Function { .. } => self.visit_stmt(member),
+                        Stmt::VarDecl {
+                            initializer: Some(init),
+                            ..
+                        } => self.visit_expr(init),
+                        _ => {}
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -314,6 +329,11 @@ impl<'a> UnusedVariableVisitor<'a> {
             }
             Expr::Check { expr, .. } | Expr::TypeOf { expr, .. } | Expr::TypeTest { expr, .. } => {
                 self.visit_expr(expr)
+            }
+            Expr::StringTemplate { interpolations, .. } => {
+                for interp in interpolations {
+                    self.visit_expr(interp);
+                }
             }
             Expr::RemoteCall {
                 object, arguments, ..
