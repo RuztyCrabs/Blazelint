@@ -202,6 +202,17 @@ impl<'a> UnusedVariableVisitor<'a> {
             } => self.visit_expr(val),
             Stmt::Panic { value, .. } | Stmt::Fail { value, .. } => self.visit_expr(value),
             Stmt::ConstDecl { initializer, .. } => self.visit_expr(initializer),
+            Stmt::DestructureDecl {
+                names,
+                name_spans,
+                initializer,
+                ..
+            } => {
+                self.visit_expr(initializer);
+                for (name, span) in names.iter().zip(name_spans.iter()) {
+                    self.declare_variable(name.clone(), span.clone());
+                }
+            }
             Stmt::Block { body, .. }
             | Stmt::Lock { body, .. }
             | Stmt::Transaction { body, .. }

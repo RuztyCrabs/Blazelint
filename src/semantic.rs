@@ -441,6 +441,26 @@ impl Analyzer {
             Stmt::Fail { value, .. } => {
                 self.check_expr(value);
             }
+            Stmt::DestructureDecl {
+                names,
+                name_spans,
+                initializer,
+                ..
+            } => {
+                self.check_expr(initializer);
+                for (name, span) in names.iter().zip(name_spans.iter()) {
+                    self.current_scope_mut().insert(
+                        name.clone(),
+                        Symbol {
+                            ty: Type::Unknown("destructured".to_string()),
+                            is_final: false,
+                            is_const: false,
+                            initialized: true,
+                            declared_span: span.clone(),
+                        },
+                    );
+                }
+            }
             Stmt::Match { subject, arms, .. } => {
                 self.check_expr(subject);
                 for arm in arms {
@@ -703,10 +723,10 @@ impl Analyzer {
                 self.check_expr(expr);
                 Type::Boolean
             }
-            // Interpolations carry template-relative spans, so they are not
-            // type-checked here (to avoid mislocated diagnostics); a template is a
-            // string.
-            Expr::StringTemplate { .. } => Type::String,
+            // A backtick template may be a string, xml, or a tagged template
+            // (`base16`/`base64` → byte[], `re` → regex). Its type is left
+            // unresolved so assignments to any of these are accepted.
+            Expr::StringTemplate { .. } => Type::Unknown("template".to_string()),
             Expr::Let { bindings, body, .. } => {
                 self.scopes.push(HashMap::new());
                 for binding in bindings {
@@ -955,7 +975,9 @@ impl Analyzer {
                 }
             }
             BinaryOp::Slash => {
-                if let Some(result) = self.numeric_result(&left_type, &right_type, true) {
+                // Ballerina integer division: `int / int` yields `int`; a float
+                // operand makes the result float.
+                if let Some(result) = self.numeric_result(&left_type, &right_type, false) {
                     result
                 } else {
                     self.report(

@@ -476,6 +476,14 @@ pub enum Stmt {
     },
     /// A bare block statement `{ ... }`.
     Block { body: Vec<Stmt>, span: Span },
+    /// A destructuring variable declaration binding several names from a list or
+    /// mapping pattern, e.g. `var [a, b] = t;` or `Rec {x, y} = r;`.
+    DestructureDecl {
+        names: Vec<String>,
+        name_spans: Vec<Span>,
+        initializer: Expr,
+        span: Span,
+    },
     /// A `fail <expr>;` statement.
     Fail { value: Expr, span: Span },
     /// A `lock { ... }` statement.
@@ -571,6 +579,7 @@ impl Stmt {
             | Stmt::Xmlns { span, .. }
             | Stmt::Match { span, .. }
             | Stmt::Block { span, .. }
+            | Stmt::DestructureDecl { span, .. }
             | Stmt::Fail { span, .. }
             | Stmt::Lock { span, .. }
             | Stmt::DoOnFail { span, .. }
