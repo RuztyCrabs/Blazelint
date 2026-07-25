@@ -37,6 +37,31 @@ pub enum Token {
     Break,
     Continue,
     Is,
+    Record,
+    Object,
+    Type,
+    Enum,
+    Class,
+    Configurable,
+    Isolated,
+    Xmlns,
+    New,
+    Checkpanic,
+    Trap,
+    Typeof,
+    Let,
+    Match,
+    Do,
+    On,
+    Fail,
+    Lock,
+    Fork,
+    Transaction,
+    Retry,
+    Rollback,
+    Commit,
+    Worker,
+    Wait,
 
     // Operators
     Plus,
@@ -68,6 +93,8 @@ pub enum Token {
     Question,
     QuestionColon,
     DotDotDot,
+    Arrow,      // =>
+    RightArrow, // ->
 
     // Delimiters
     LParen,
@@ -326,6 +353,31 @@ impl<'input> Lexer<'input> {
             "break" => Token::Break,
             "continue" => Token::Continue,
             "is" => Token::Is,
+            "record" => Token::Record,
+            "object" => Token::Object,
+            "type" => Token::Type,
+            "enum" => Token::Enum,
+            "class" => Token::Class,
+            "configurable" => Token::Configurable,
+            "isolated" => Token::Isolated,
+            "xmlns" => Token::Xmlns,
+            "new" => Token::New,
+            "checkpanic" => Token::Checkpanic,
+            "trap" => Token::Trap,
+            "typeof" => Token::Typeof,
+            "let" => Token::Let,
+            "match" => Token::Match,
+            "do" => Token::Do,
+            "on" => Token::On,
+            "fail" => Token::Fail,
+            "lock" => Token::Lock,
+            "fork" => Token::Fork,
+            "transaction" => Token::Transaction,
+            "retry" => Token::Retry,
+            "rollback" => Token::Rollback,
+            "commit" => Token::Commit,
+            "worker" => Token::Worker,
+            "wait" => Token::Wait,
             _ => Token::Identifier(text.to_string()),
         }
     }
@@ -423,6 +475,8 @@ impl Iterator for Lexer<'_> {
             '-' => {
                 if self.match_char('=') {
                     Ok(self.create_token(Token::MinusEq))
+                } else if self.match_char('>') {
+                    Ok(self.create_token(Token::RightArrow))
                 } else {
                     Ok(self.create_token(Token::Minus))
                 }
@@ -457,6 +511,8 @@ impl Iterator for Lexer<'_> {
                     } else {
                         Ok(self.create_token(Token::EqEq))
                     }
+                } else if self.match_char('>') {
+                    Ok(self.create_token(Token::Arrow))
                 } else {
                     Ok(self.create_token(Token::Eq))
                 }

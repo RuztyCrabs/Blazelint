@@ -4,7 +4,7 @@
 //! scopes, and enforces the subset of Ballerina typing rules supported by the
 //! linter. Each visitor emits structured diagnostics tagged with source spans
 //! so the CLI can highlight offending code precisely.
-use crate::ast::{BinaryOp, Expr, Literal, Stmt, TypeDescriptor, UnaryOp};
+use crate::ast::{BinaryOp, Expr, Literal, QueryClause, Stmt, TypeDescriptor, UnaryOp};
 use crate::errors::{Diagnostic, DiagnosticKind, Span};
 use std::collections::{HashMap, HashSet};
 
@@ -113,7 +113,7 @@ impl Analyzer {
             } => {
                 let declared_type = type_annotation
                     .as_ref()
-                    .map(|ann| self.type_from_annotation(ann, span.clone()));
+                    .map(|ann| self.type_from_annotation(ann));
 
                 if *is_final && initializer.is_none() {
                     self.report(
@@ -172,7 +172,7 @@ impl Analyzer {
             } => {
                 let declared_type = type_annotation
                     .as_ref()
-                    .map(|ann| self.type_from_annotation(ann, span.clone()));
+                    .map(|ann| self.type_from_annotation(ann));
 
                 if let Some(existing) = self.current_scope().get(name) {
                     self.report(
@@ -326,7 +326,7 @@ impl Analyzer {
                 self.loop_depth += 1;
                 self.with_scope(|analyzer| {
                     let var_type = if let Some(type_ann) = type_annotation {
-                        analyzer.type_from_annotation(type_ann, iterable.span().clone())
+                        analyzer.type_from_annotation(type_ann)
                     } else {
                         Type::Unknown("foreach_var".to_string())
                     };
@@ -371,7 +371,7 @@ impl Analyzer {
             } => {
                 let return_ty = return_type
                     .as_ref()
-                    .map(|ty| self.type_from_annotation(ty, name_span.clone()))
+                    .map(|ty| self.type_from_annotation(ty))
                     .unwrap_or(Type::Nil);
 
                 let previous = self.current_function.take();
@@ -381,7 +381,7 @@ impl Analyzer {
 
                 self.with_scope(|analyzer| {
                     for (param_name, ty_name) in params {
-                        let param_type = analyzer.type_from_annotation(ty_name, name_span.clone());
+                        let param_type = analyzer.type_from_annotation(ty_name);
                         analyzer.current_scope_mut().insert(
                             param_name.clone(),
                             Symbol {
@@ -400,6 +400,102 @@ impl Analyzer {
 
                 self.current_function = previous;
             }
+            // Module-level declarations introduced in the grammar expansion.
+            // Enum members are bound as usable symbols so references to them do not
+            // report "undeclared variable". Other declarations are accepted without
+            // deep analysis (parse-tolerant / deferred semantics).
+            Stmt::EnumDef { members, .. } => {
+                for member in members {
+                    if let Some(value) = &member.value {
+                        self.check_expr(value);
+                    }
+                    self.current_scope_mut().insert(
+                        member.name.clone(),
+                        Symbol {
+                            ty: Type::Unknown("enum".to_string()),
+                            is_final: true,
+                            is_const: true,
+                            initialized: true,
+                            declared_span: member.name_span.clone(),
+                        },
+                    );
+                }
+            }
+            Stmt::TypeDef { .. }
+            | Stmt::ClassDef { .. }
+            | Stmt::ServiceDecl { .. }
+            | Stmt::ListenerDecl { .. }
+            | Stmt::AnnotationDecl { .. }
+            | Stmt::Xmlns { .. } => {}
+            Stmt::Block { body, .. }
+            | Stmt::Lock { body, .. }
+            | Stmt::Transaction { body, .. }
+            | Stmt::Retry { body, .. }
+            | Stmt::Worker { body, .. } => {
+                self.with_scope(|analyzer| {
+                    for stmt in body {
+                        analyzer.check_stmt(stmt);
+                    }
+                });
+            }
+            Stmt::Fail { value, .. } => {
+                self.check_expr(value);
+            }
+            Stmt::Match { subject, arms, .. } => {
+                self.check_expr(subject);
+                for arm in arms {
+                    self.with_scope(|analyzer| {
+                        for name in &arm.bindings {
+                            analyzer.current_scope_mut().insert(
+                                name.clone(),
+                                Symbol {
+                                    ty: Type::Unknown("match_binding".to_string()),
+                                    is_final: true,
+                                    is_const: false,
+                                    initialized: true,
+                                    declared_span: 0..0,
+                                },
+                            );
+                        }
+                        if let Some(guard) = &arm.guard {
+                            analyzer.check_expr(guard);
+                        }
+                        for stmt in &arm.body {
+                            analyzer.check_stmt(stmt);
+                        }
+                    });
+                }
+            }
+            Stmt::DoOnFail {
+                body,
+                on_fail_var,
+                on_fail_body,
+                ..
+            } => {
+                self.with_scope(|analyzer| {
+                    for stmt in body {
+                        analyzer.check_stmt(stmt);
+                    }
+                });
+                self.with_scope(|analyzer| {
+                    if let Some(var) = on_fail_var {
+                        analyzer.current_scope_mut().insert(
+                            var.clone(),
+                            Symbol {
+                                ty: Type::Error,
+                                is_final: true,
+                                is_const: false,
+                                initialized: true,
+                                declared_span: 0..0,
+                            },
+                        );
+                    }
+                    for stmt in on_fail_body {
+                        analyzer.check_stmt(stmt);
+                    }
+                });
+            }
+            Stmt::Rollback { .. } | Stmt::Fork { .. } => {}
         }
     }
 
@@ -441,6 +537,18 @@ impl Analyzer {
                     }
                 }
             }
+            Expr::FieldAccess { object, .. } => {
+                // Field types are not resolved yet; visit the object for its own
+                // checks and treat the field value as unknown.
+                let _obj_type = self.check_expr(object);
+                Type::Unknown("field".to_string())
+            }
+            Expr::MemberAssign { target, value, .. } => {
+                // Assignment to a field/index lvalue. Visit both sides; mutability
+                // and type-compatibility checks on such targets are deferred.
+                self.check_expr(target);
+                self.check_expr(value)
+            }
             Expr::MethodCall {
                 object,
                 method,
@@ -480,50 +588,48 @@ impl Analyzer {
                     return Type::Array(Box::new(Type::Unknown("empty_array".to_string())));
                 }
 
-                // Infer type from first element
+                // A `[...]` constructor may be an array OR a tuple, so heterogeneous
+                // elements are not an error. Still visit every element so variable
+                // use/undeclared tracking runs across all of them.
                 let first_type = self.check_expr(&elements[0]);
-
-                // Check all elements have compatible types
+                let mut homogeneous = true;
                 for elem in &elements[1..] {
                     let elem_type = self.check_expr(elem);
-                    if !Self::can_assign(&first_type, &elem_type) && !elem_type.is_unknown() {
-                        self.report(
-                            elem.span().clone(),
-                            format!(
-                                "Array elements must have compatible types, expected {}, found {}",
-                                first_type.description(),
-                                elem_type.description()
-                            ),
-                        );
+                    if !Self::can_assign(&first_type, &elem_type) {
+                        homogeneous = false;
                     }
                 }
 
-                Type::Array(Box::new(first_type))
+                if homogeneous {
+                    Type::Array(Box::new(first_type))
+                } else {
+                    // Mixed element types: treat as an (unresolved) tuple-like list.
+                    Type::Unknown("list".to_string())
+                }
             }
             Expr::MapLiteral { entries, .. } => {
                 if entries.is_empty() {
                     return Type::Map(Box::new(Type::Unknown("empty_map".to_string())));
                 }
 
-                // Infer type from first value
+                // A `{...}` constructor may be a map OR a record/mapping value, so
+                // heterogeneous values are not an error. Visit every value for
+                // use/undeclared tracking.
                 let first_type = self.check_expr(&entries[0].1);
-
-                // Check all values have compatible types
+                let mut homogeneous = true;
                 for (_key, value) in &entries[1..] {
                     let val_type = self.check_expr(value);
-                    if !Self::can_assign(&first_type, &val_type) && !val_type.is_unknown() {
-                        self.report(
-                            value.span().clone(),
-                            format!(
-                                "Map values must have compatible types, expected {}, found {}",
-                                first_type.description(),
-                                val_type.description()
-                            ),
-                        );
+                    if !Self::can_assign(&first_type, &val_type) {
+                        homogeneous = false;
                     }
                 }
 
-                Type::Map(Box::new(first_type))
+                if homogeneous {
+                    Type::Map(Box::new(first_type))
+                } else {
+                    // Mixed value types: treat as an (unresolved) mapping value.
+                    Type::Unknown("mapping".to_string())
+                }
             }
             Expr::Ternary {
                 condition,
@@ -567,14 +673,197 @@ impl Analyzer {
                 Type::Unknown("range".to_string())
             }
             Expr::Cast {
-                type_desc,
-                expr,
-                span,
+                type_desc, expr, ..
             } => {
                 let _expr_type = self.check_expr(expr);
-                self.type_from_annotation(type_desc, span.clone())
+                self.type_from_annotation(type_desc)
+            }
+            Expr::New {
+                type_desc,
+                arguments,
+                ..
+            } => {
+                for arg in arguments {
+                    self.check_expr(arg);
+                }
+                match type_desc {
+                    Some(desc) => self.type_from_annotation(desc),
+                    None => Type::Unknown("object".to_string()),
+                }
+            }
+            // `check`/`checkpanic` unwrap an error union; `trap` yields the value
+            // or an error. Full union modelling is deferred, so return the inner
+            // expression's type.
+            Expr::Check { expr, .. } => self.check_expr(expr),
+            Expr::TypeOf { expr, .. } => {
+                self.check_expr(expr);
+                Type::Unknown("typedesc".to_string())
+            }
+            Expr::TypeTest { expr, .. } => {
+                self.check_expr(expr);
+                Type::Boolean
+            }
+            Expr::Let { bindings, body, .. } => {
+                self.scopes.push(HashMap::new());
+                for binding in bindings {
+                    let value_type = self.check_expr(&binding.value);
+                    self.current_scope_mut().insert(
+                        binding.name.clone(),
+                        Symbol {
+                            ty: value_type,
+                            is_final: true,
+                            is_const: false,
+                            initialized: true,
+                            declared_span: binding.value.span().clone(),
+                        },
+                    );
+                }
+                let body_type = self.check_expr(body);
+                self.scopes.pop();
+                body_type
+            }
+            Expr::AnonFunction {
+                params,
+                return_type,
+                body,
+                ..
+            } => {
+                let ret = return_type
+                    .as_ref()
+                    .map(|t| self.type_from_annotation(t))
+                    .unwrap_or_else(|| Type::Unknown("infer".to_string()));
+                let previous = self.current_function.take();
+                self.current_function = Some(FunctionContext { return_type: ret });
+                self.scopes.push(HashMap::new());
+                for (param_name, param_ty) in params {
+                    let ty = self.type_from_annotation(param_ty);
+                    self.current_scope_mut().insert(
+                        param_name.clone(),
+                        Symbol {
+                            ty,
+                            is_final: true,
+                            is_const: false,
+                            initialized: true,
+                            declared_span: 0..0,
+                        },
+                    );
+                }
+                for stmt in body {
+                    self.check_stmt(stmt);
+                }
+                self.scopes.pop();
+                self.current_function = previous;
+                Type::Unknown("function".to_string())
+            }
+            Expr::Arrow { params, body, .. } => {
+                self.scopes.push(HashMap::new());
+                for param in params {
+                    self.current_scope_mut().insert(
+                        param.clone(),
+                        Symbol {
+                            ty: Type::Unknown("param".to_string()),
+                            is_final: true,
+                            is_const: false,
+                            initialized: true,
+                            declared_span: 0..0,
+                        },
+                    );
+                }
+                let _ = self.check_expr(body);
+                self.scopes.pop();
+                Type::Unknown("function".to_string())
+            }
+            Expr::RemoteCall {
+                object, arguments, ..
+            } => {
+                self.check_expr(object);
+                for arg in arguments {
+                    self.check_expr(arg);
+                }
+                Type::Unknown("remote_call".to_string())
+            }
+            Expr::Query { clauses, .. } => {
+                // Query clauses share one scope: bindings introduced by `from`,
+                // `join`, and `let` are visible to later clauses (`where`,
+                // `select`, ...).
+                self.scopes.push(HashMap::new());
+                for clause in clauses {
+                    match clause {
+                        QueryClause::From { var, source } => {
+                            self.check_expr(source);
+                            self.bind_query_var(var);
+                        }
+                        QueryClause::Where(expr)
+                        | QueryClause::Limit(expr)
+                        | QueryClause::Select(expr) => {
+                            self.check_expr(expr);
+                        }
+                        QueryClause::Let(bindings) => {
+                            for binding in bindings {
+                                let ty = self.check_expr(&binding.value);
+                                self.current_scope_mut().insert(
+                                    binding.name.clone(),
+                                    Symbol {
+                                        ty,
+                                        is_final: true,
+                                        is_const: false,
+                                        initialized: true,
+                                        declared_span: binding.value.span().clone(),
+                                    },
+                                );
+                            }
+                        }
+                        QueryClause::Join {
+                            var,
+                            source,
+                            on_left,
+                            on_right,
+                        } => {
+                            self.check_expr(source);
+                            self.bind_query_var(var);
+                            self.check_expr(on_left);
+                            self.check_expr(on_right);
+                        }
+                        QueryClause::OrderBy(keys) => {
+                            for key in keys {
+                                self.check_expr(key);
+                            }
+                        }
+                        QueryClause::Other => {}
+                    }
+                }
+                self.scopes.pop();
+                Type::Unknown("query".to_string())
+            }
+            Expr::TableConstructor { rows, .. } => {
+                for row in rows {
+                    self.check_expr(row);
+                }
+                Type::Unknown("table".to_string())
+            }
+            Expr::Start { call, .. } => {
+                self.check_expr(call);
+                Type::Unknown("future".to_string())
             }
         }
+    }
+
+    /// Binds a query clause variable (from/join) into the current scope, ignoring
+    /// empty names produced by leniently-consumed destructuring patterns.
+    fn bind_query_var(&mut self, name: &str) {
+        if name.is_empty() {
+            return;
+        }
+        self.current_scope_mut().insert(
+            name.to_string(),
+            Symbol {
+                ty: Type::Unknown("query_var".to_string()),
+                is_final: true,
+                is_const: false,
+                initialized: true,
+                declared_span: 0..0,
+            },
+        );
     }
 
     /// Enforces the operand rules for unary expressions.
@@ -854,6 +1143,11 @@ impl Analyzer {
 
     /// Resolves an identifier reference, emitting diagnostics when undefined or uninitialised.
     fn lookup_variable(&mut self, name: &str, span: Span) -> Type {
+        // `self` (enclosing object) and `commit` (transaction action) are always
+        // available and not modelled here.
+        if name == "self" || name == "commit" {
+            return Type::Unknown(name.to_string());
+        }
         if let Some(symbol) = self.lookup_symbol(name).cloned() {
             if !symbol.initialized {
                 self.report(
@@ -890,10 +1184,24 @@ impl Analyzer {
 
     /// Returns whether the analyzer permits assigning `value` into `target`.
     fn can_assign(target: &Type, value: &Type) -> bool {
+        // Deferred/unresolved types (records, tuples, generics, user-defined
+        // names, ...) resolve to `Unknown`. The linter cannot verify assignments
+        // involving them, so it accepts rather than reports a false mismatch.
+        if target.is_unknown() || value.is_unknown() {
+            return true;
+        }
         if target == value {
             return true;
         }
-        matches!((target, value), (Type::Float, Type::Int))
+        // Recurse into container element types so, e.g., `Employee[]` (an array of
+        // an unresolved element type) accepts an array-literal of mappings.
+        match (target, value) {
+            (Type::Array(t), Type::Array(v)) | (Type::Map(t), Type::Map(v)) => {
+                Self::can_assign(t, v)
+            }
+            (Type::Float, Type::Int) => true,
+            _ => false,
+        }
     }
 
     /// Validates call expressions and, for now, records the callee type as unknown.
@@ -941,7 +1249,7 @@ impl Analyzer {
     }
 
     /// Converts a type annotation/descriptor into an internal `Type` value.
-    fn type_from_annotation(&mut self, type_desc: &TypeDescriptor, span: Span) -> Type {
+    fn type_from_annotation(&mut self, type_desc: &TypeDescriptor) -> Type {
         match type_desc {
             TypeDescriptor::Basic(name) => match name.as_str() {
                 "int" => Type::Int,
@@ -953,27 +1261,43 @@ impl Analyzer {
                 "anydata" => Type::Unknown("anydata".to_string()),
                 "error" => Type::Error,
                 "nil" => Type::Nil,
-                other => {
-                    self.report(span, format!("Unknown type '{other}'"));
-                    Type::Unknown(other.to_string())
-                }
+                // Predeclared types (json, xml, ...) and user-defined type names
+                // (records, classes, enums) are not fully resolved by the linter.
+                // Treat them as unknown rather than flagging them as errors, so
+                // real-world programs are not rejected.
+                other => Type::Unknown(other.to_string()),
             },
             TypeDescriptor::Array { element_type, .. } => {
-                let elem_ty = self.type_from_annotation(element_type, span);
+                let elem_ty = self.type_from_annotation(element_type);
                 Type::Array(Box::new(elem_ty))
             }
             TypeDescriptor::Map { value_type } => {
-                let val_ty = self.type_from_annotation(value_type, span);
+                let val_ty = self.type_from_annotation(value_type);
                 Type::Map(Box::new(val_ty))
             }
-            TypeDescriptor::Optional(inner) => self.type_from_annotation(inner, span),
+            TypeDescriptor::Optional(inner) => self.type_from_annotation(inner),
             TypeDescriptor::Union(types) => {
                 if !types.is_empty() {
-                    self.type_from_annotation(&types[0], span)
+                    self.type_from_annotation(&types[0])
                 } else {
                     Type::Unknown("union".to_string())
                 }
             }
+            // Parse-tolerant, deferred-semantics types: represented but not fully
+            // type-checked yet. They resolve to Unknown so downstream checks stay
+            // silent instead of producing false positives.
+            TypeDescriptor::Tuple { .. } => Type::Unknown("tuple".to_string()),
+            TypeDescriptor::Record { .. } => Type::Unknown("record".to_string()),
+            TypeDescriptor::Object => Type::Unknown("object".to_string()),
+            TypeDescriptor::Function { .. } => Type::Unknown("function".to_string()),
+            TypeDescriptor::Generic { name, .. } => match name.as_str() {
+                "error" => Type::Error,
+                other => Type::Unknown(other.to_string()),
+            },
+            TypeDescriptor::Intersection(_) => Type::Unknown("intersection".to_string()),
+            TypeDescriptor::Singleton(text) => Type::Unknown(text.clone()),
+            TypeDescriptor::Distinct(inner) => self.type_from_annotation(inner),
+            TypeDescriptor::Qualified { module, name } => Type::Unknown(format!("{module}:{name}")),
         }
     }
 
