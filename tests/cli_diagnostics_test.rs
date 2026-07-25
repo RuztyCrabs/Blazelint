@@ -53,6 +53,103 @@ fn comprehensive_test_passes() {
     );
 }
 
+#[test]
+fn phase1_type_descriptors_parse_clean() {
+    // Real-world-style program exercising the expanded type-descriptor grammar
+    // (tuples, inline records, generics, intersections, unions, function types,
+    // predeclared/named types). It must parse and analyze without errors.
+    let code = include_str!("test-bal-files/phase1_types.bal");
+    let (output, _file_path) = run_cli(code);
+    let out = stdout(&output);
+    assert!(out.contains("-- AST --"), "Should generate AST");
+    assert!(
+        !out.contains("Error:"),
+        "Phase 1 type syntax should parse and analyze cleanly, got:\n{out}"
+    );
+    assert!(output.status.success());
+}
+
+#[test]
+fn phase2_module_declarations_parse_clean() {
+    // Real-world-style program exercising module-level declarations: type
+    // definitions, singleton-union type aliases, enums, configurable variables,
+    // and a class with fields and methods (including `self` field access and
+    // `new` construction). Must parse and analyze without errors.
+    let code = include_str!("test-bal-files/phase2_declarations.bal");
+    let (output, _file_path) = run_cli(code);
+    let out = stdout(&output);
+    assert!(out.contains("-- AST --"), "Should generate AST");
+    assert!(
+        !out.contains("Error:"),
+        "Phase 2 declarations should parse and analyze cleanly, got:\n{out}"
+    );
+    assert!(output.status.success());
+}
+
+#[test]
+fn phase3_expressions_parse_clean() {
+    // Real-world-style program exercising error handling (`check`/`checkpanic`),
+    // arrow and anonymous functions, `let` expressions, and `typeof`. Must parse
+    // and analyze without errors.
+    let code = include_str!("test-bal-files/phase3_expressions.bal");
+    let (output, _file_path) = run_cli(code);
+    let out = stdout(&output);
+    assert!(out.contains("-- AST --"), "Should generate AST");
+    assert!(
+        !out.contains("Error:"),
+        "Phase 3 expressions should parse and analyze cleanly, got:\n{out}"
+    );
+    assert!(output.status.success());
+}
+
+#[test]
+fn phase4_control_flow_parses_clean() {
+    // Real-world-style program exercising match statements (with list patterns and
+    // guards), do/on-fail, lock, and transaction blocks. Must parse and analyze
+    // without errors.
+    let code = include_str!("test-bal-files/phase4_control_flow.bal");
+    let (output, _file_path) = run_cli(code);
+    let out = stdout(&output);
+    assert!(out.contains("-- AST --"), "Should generate AST");
+    assert!(
+        !out.contains("Error:"),
+        "Phase 4 control flow should parse and analyze cleanly, got:\n{out}"
+    );
+    assert!(output.status.success());
+}
+
+#[test]
+fn phase5_queries_parse_clean() {
+    // Real-world-style program exercising query expressions (from/where/let/join/
+    // order by/limit/select) and table constructors. Must parse and analyze
+    // without errors.
+    let code = include_str!("test-bal-files/phase5_queries.bal");
+    let (output, _file_path) = run_cli(code);
+    let out = stdout(&output);
+    assert!(out.contains("-- AST --"), "Should generate AST");
+    assert!(
+        !out.contains("Error:"),
+        "Phase 5 queries should parse and analyze cleanly, got:\n{out}"
+    );
+    assert!(output.status.success());
+}
+
+#[test]
+fn realworld_combined_program_parses_clean() {
+    // End-to-end real-world acceptance: a single idiomatic program combining
+    // records, enums, classes, error handling, match, queries, do/on-fail, and
+    // the `is` type test. Must parse and analyze with no diagnostics.
+    let code = include_str!("test-bal-files/realworld_combined.bal");
+    let (output, _file_path) = run_cli(code);
+    let out = stdout(&output);
+    assert!(out.contains("-- AST --"), "Should generate AST");
+    assert!(
+        !out.contains("Error:"),
+        "Combined real-world program should parse and analyze cleanly, got:\n{out}"
+    );
+    assert!(output.status.success());
+}
+
 // ============================================================================
 // LEXER TESTS
 // ============================================================================

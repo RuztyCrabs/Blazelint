@@ -1,7 +1,7 @@
 //! Rule to detect unused variables.
 
 use crate::{
-    ast::{Expr, Stmt},
+    ast::{Expr, QueryClause, Stmt},
     config::Config,
     errors::{Diagnostic, DiagnosticKind, Severity},
     linter::registry::LintRule,
@@ -200,6 +200,41 @@ impl<'a> UnusedVariableVisitor<'a> {
             Stmt::Return {
                 value: Some(val), ..
             } => self.visit_expr(val),
+            Stmt::Panic { value, .. } | Stmt::Fail { value, .. } => self.visit_expr(value),
+            Stmt::ConstDecl { initializer, .. } => self.visit_expr(initializer),
+            Stmt::Block { body, .. }
+            | Stmt::Lock { body, .. }
+            | Stmt::Transaction { body, .. }
+            | Stmt::Retry { body, .. }
+            | Stmt::Worker { body, .. } => {
+                self.enter_scope();
+                self.visit_stmts(body);
+                self.exit_scope();
+            }
+            Stmt::Match { subject, arms, .. } => {
+                self.visit_expr(subject);
+                for arm in arms {
+                    // Pattern-bound names (captures/rests) are intentionally not
+                    // declared for unused-tracking: match catch-alls frequently
+                    // ignore their binding, so flagging them would be noisy.
+                    self.enter_scope();
+                    if let Some(guard) = &arm.guard {
+                        self.visit_expr(guard);
+                    }
+                    self.visit_stmts(&arm.body);
+                    self.exit_scope();
+                }
+            }
+            Stmt::DoOnFail {
+                body, on_fail_body, ..
+            } => {
+                self.enter_scope();
+                self.visit_stmts(body);
+                self.exit_scope();
+                self.enter_scope();
+                self.visit_stmts(on_fail_body);
+                self.exit_scope();
+            }
             _ => {}
         }
     }
@@ -226,7 +261,130 @@ impl<'a> UnusedVariableVisitor<'a> {
                 self.use_variable(name);
                 self.visit_expr(value);
             }
-            _ => {}
+            Expr::MemberAccess { object, member, .. } => {
+                self.visit_expr(object);
+                self.visit_expr(member);
+            }
+            Expr::FieldAccess { object, .. } => self.visit_expr(object),
+            Expr::MemberAssign { target, value, .. } => {
+                self.visit_expr(target);
+                self.visit_expr(value);
+            }
+            Expr::MethodCall {
+                object, arguments, ..
+            } => {
+                self.visit_expr(object);
+                for arg in arguments {
+                    self.visit_expr(arg);
+                }
+            }
+            Expr::ArrayLiteral { elements, .. } => {
+                for element in elements {
+                    self.visit_expr(element);
+                }
+            }
+            Expr::MapLiteral { entries, .. } => {
+                for (_key, value) in entries {
+                    self.visit_expr(value);
+                }
+            }
+            Expr::Ternary {
+                condition,
+                true_expr,
+                false_expr,
+                ..
+            } => {
+                self.visit_expr(condition);
+                self.visit_expr(true_expr);
+                self.visit_expr(false_expr);
+            }
+            Expr::Elvis { expr, default, .. } => {
+                self.visit_expr(expr);
+                self.visit_expr(default);
+            }
+            Expr::Range { start, end, .. } => {
+                self.visit_expr(start);
+                self.visit_expr(end);
+            }
+            Expr::Cast { expr, .. } => self.visit_expr(expr),
+            Expr::New { arguments, .. } => {
+                for arg in arguments {
+                    self.visit_expr(arg);
+                }
+            }
+            Expr::Check { expr, .. } | Expr::TypeOf { expr, .. } | Expr::TypeTest { expr, .. } => {
+                self.visit_expr(expr)
+            }
+            Expr::RemoteCall {
+                object, arguments, ..
+            } => {
+                self.visit_expr(object);
+                for arg in arguments {
+                    self.visit_expr(arg);
+                }
+            }
+            Expr::Let { bindings, body, .. } => {
+                self.enter_scope();
+                for binding in bindings {
+                    self.visit_expr(&binding.value);
+                    self.declare_variable(binding.name.clone(), 0..0);
+                }
+                self.visit_expr(body);
+                self.exit_scope();
+            }
+            Expr::AnonFunction { body, .. } => {
+                self.enter_scope();
+                self.visit_stmts(body);
+                self.exit_scope();
+            }
+            Expr::Arrow { body, .. } => {
+                self.enter_scope();
+                self.visit_expr(body);
+                self.exit_scope();
+            }
+            Expr::Query { clauses, .. } => {
+                // Visit every sub-expression so outer variables referenced in the
+                // query are marked used. Query-clause bindings are not declared for
+                // unused-tracking (same rationale as match bindings).
+                self.enter_scope();
+                for clause in clauses {
+                    match clause {
+                        QueryClause::From { source, .. } => self.visit_expr(source),
+                        QueryClause::Where(expr)
+                        | QueryClause::Limit(expr)
+                        | QueryClause::Select(expr) => self.visit_expr(expr),
+                        QueryClause::Let(bindings) => {
+                            for binding in bindings {
+                                self.visit_expr(&binding.value);
+                            }
+                        }
+                        QueryClause::Join {
+                            source,
+                            on_left,
+                            on_right,
+                            ..
+                        } => {
+                            self.visit_expr(source);
+                            self.visit_expr(on_left);
+                            self.visit_expr(on_right);
+                        }
+                        QueryClause::OrderBy(keys) => {
+                            for key in keys {
+                                self.visit_expr(key);
+                            }
+                        }
+                        QueryClause::Other => {}
+                    }
+                }
+                self.exit_scope();
+            }
+            Expr::TableConstructor { rows, .. } => {
+                for row in rows {
+                    self.visit_expr(row);
+                }
+            }
+            Expr::Start { call, .. } => self.visit_expr(call),
+            Expr::Literal { .. } => {}
         }
     }
 }
