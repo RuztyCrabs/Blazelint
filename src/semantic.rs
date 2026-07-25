@@ -703,6 +703,10 @@ impl Analyzer {
                 self.check_expr(expr);
                 Type::Boolean
             }
+            // Interpolations carry template-relative spans, so they are not
+            // type-checked here (to avoid mislocated diagnostics); a template is a
+            // string.
+            Expr::StringTemplate { .. } => Type::String,
             Expr::Let { bindings, body, .. } => {
                 self.scopes.push(HashMap::new());
                 for binding in bindings {
@@ -789,9 +793,11 @@ impl Analyzer {
                 self.scopes.push(HashMap::new());
                 for clause in clauses {
                     match clause {
-                        QueryClause::From { var, source } => {
+                        QueryClause::From { vars, source } => {
                             self.check_expr(source);
-                            self.bind_query_var(var);
+                            for var in vars {
+                                self.bind_query_var(var);
+                            }
                         }
                         QueryClause::Where(expr)
                         | QueryClause::Limit(expr)
@@ -814,13 +820,15 @@ impl Analyzer {
                             }
                         }
                         QueryClause::Join {
-                            var,
+                            vars,
                             source,
                             on_left,
                             on_right,
                         } => {
                             self.check_expr(source);
-                            self.bind_query_var(var);
+                            for var in vars {
+                                self.bind_query_var(var);
+                            }
                             self.check_expr(on_left);
                             self.check_expr(on_right);
                         }
@@ -924,7 +932,14 @@ impl Analyzer {
 
         match op {
             BinaryOp::Plus | BinaryOp::Minus | BinaryOp::Star | BinaryOp::Percent => {
-                if let Some(result) = self.numeric_result(&left_type, &right_type, false) {
+                // `+` also concatenates strings (and is valid on xml/other
+                // sequence types, which resolve to Unknown and are accepted).
+                if matches!(op, BinaryOp::Plus)
+                    && left_type == Type::String
+                    && right_type == Type::String
+                {
+                    Type::String
+                } else if let Some(result) = self.numeric_result(&left_type, &right_type, false) {
                     result
                 } else {
                     self.report(
@@ -1143,9 +1158,25 @@ impl Analyzer {
 
     /// Resolves an identifier reference, emitting diagnostics when undefined or uninitialised.
     fn lookup_variable(&mut self, name: &str, span: Span) -> Type {
-        // `self` (enclosing object) and `commit` (transaction action) are always
-        // available and not modelled here.
-        if name == "self" || name == "commit" {
+        // `self` (enclosing object), `commit` (transaction action), and builtin
+        // type names used as `typedesc` values are always available.
+        if name == "self"
+            || name == "commit"
+            || matches!(
+                name,
+                "int"
+                    | "string"
+                    | "boolean"
+                    | "float"
+                    | "decimal"
+                    | "byte"
+                    | "anydata"
+                    | "json"
+                    | "xml"
+                    | "any"
+                    | "error"
+            )
+        {
             return Type::Unknown(name.to_string());
         }
         if let Some(symbol) = self.lookup_symbol(name).cloned() {
@@ -1230,7 +1261,9 @@ impl Analyzer {
                     }
                 }
 
-                if !self.functions.contains(name) {
+                // A call target may be a function-typed variable in scope (a
+                // closure/first-class function), not a declared function.
+                if !self.functions.contains(name) && self.lookup_symbol(name).is_none() {
                     self.report(
                         callee_span.clone(),
                         format!("Call to unknown function '{name}'"),

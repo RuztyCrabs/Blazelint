@@ -16,6 +16,9 @@ pub struct Parser {
     tokens: Vec<(usize, Token, usize)>,
     current: usize,
     errors: Vec<Diagnostic>,
+    /// True while parsing the type on the right of an `is` operator, where a
+    /// trailing `?` may be a ternary rather than an optional-type suffix.
+    in_is_type: bool,
 }
 
 impl Parser {
@@ -25,6 +28,7 @@ impl Parser {
             tokens,
             current: 0,
             errors: Vec::new(),
+            in_is_type: false,
         }
     }
 
@@ -53,6 +57,7 @@ impl Parser {
     /// statement boundary. This allows the parser to recover and continue
     /// finding more errors instead of stopping at the first one.
     fn synchronize(&mut self) {
+        self.in_is_type = false; // reset transient parse state on recovery
         while !self.is_at_end() {
             // If we just passed a semicolon, we're at a statement boundary
             if matches!(self.previous(), Some(Token::Semicolon)) {
@@ -85,6 +90,10 @@ impl Parser {
     /// or a statement). Leading module-level qualifiers (`public`, `isolated`,
     /// `readonly`, ...) are consumed first, then the declaration kind dispatched.
     fn declaration(&mut self) -> ParseResult<Stmt> {
+        // Annotation attachments (`@http:ServiceConfig { ... }`) may precede any
+        // declaration; consume them (parse-tolerant — not retained).
+        self.skip_annotations()?;
+
         if self.match_token(&[Token::Import])? {
             return self.import_declaration();
         }
@@ -112,12 +121,33 @@ impl Parser {
             Some(Token::Type) => self.type_definition(is_public),
             Some(Token::Enum) => self.enum_definition(is_public),
             Some(Token::Class) => self.class_definition(is_public, qualifiers),
+            // `function (` begins a function-typed variable declaration
+            // (`function (int) returns int f = ...`); `function name(` is a decl.
+            Some(Token::Function) if matches!(self.peek_n(1), Some(Token::LParen)) => {
+                self.var_decl()
+            }
             Some(Token::Function) => self.function(is_public, qualifiers),
             _ if self.starts_var_decl() || matches!(self.peek(), Some(Token::Const)) => {
                 self.var_decl()
             }
             _ => self.statement(),
         }
+    }
+
+    /// Consumes any run of annotation attachments (`@tag`, `@mod:tag { ... }`),
+    /// discarding them. Annotation values are mapping constructors and are skipped
+    /// as balanced brace blocks.
+    fn skip_annotations(&mut self) -> ParseResult<()> {
+        while self.match_token(&[Token::At])? {
+            let _ = self.expect_ident("Expected annotation tag after '@'")?;
+            if self.match_token(&[Token::Colon])? {
+                let _ = self.expect_ident("Expected annotation name after ':'")?;
+            }
+            if self.check(&Token::LBrace) {
+                self.skip_braced_block()?;
+            }
+        }
+        Ok(())
     }
 
     /// Consumes a run of module-level qualifier keywords, returning whether
@@ -147,28 +177,23 @@ impl Parser {
     fn import_declaration(&mut self) -> ParseResult<Stmt> {
         let import_span_start = self.previous_span().start;
 
+        // Module path segments separated by `/` (org) and `.` (submodules), e.g.
+        // `ballerina/lang.runtime` or `ballerinax/aws.lambda`.
         let mut package_path = Vec::new();
-        let first_token = self.advance_owned()?;
-        match first_token {
-            Token::Identifier(name) => package_path.push(name),
-            _ => {
-                return Err(
-                    self.error_previous("Expected package name after 'import'", Some("identifier"))
-                )
+        package_path.push(self.expect_ident("Expected package name after 'import'")?);
+        loop {
+            if self.match_token(&[Token::Slash, Token::Dot])? {
+                package_path.push(self.expect_ident("Expected package component")?);
+            } else {
+                break;
             }
         }
 
-        while self.match_token(&[Token::Slash])? {
-            let next_token = self.advance_owned()?;
-            match next_token {
-                Token::Identifier(name) => package_path.push(name),
-                _ => {
-                    return Err(self.error_previous(
-                        "Expected package component after '/'",
-                        Some("identifier"),
-                    ))
-                }
-            }
+        // Optional import alias: `import foo/bar as baz;`.
+        if self.check_ctx_kw("as") {
+            self.advance()?; // 'as'
+                             // The alias may be an identifier or `_` (no prefix).
+            let _ = self.advance_owned()?;
         }
 
         self.consume(Token::Semicolon, "Expected ';' after import", Some("';'"))?;
@@ -185,22 +210,15 @@ impl Parser {
         let mut span_start = self.current_span().start;
 
         if self.match_token(&[Token::Const])? {
-            if Self::is_type_start(self.peek().unwrap()) {
-                return Err(
-                    self.error_previous("const declarations cannot have a type annotation", None)
-                );
-            }
-
-            let name_token = self.advance_owned()?;
-            let name = match name_token {
-                Token::Identifier(name) => name,
-                _ => {
-                    return Err(self.error_previous(
-                        "Expected constant name after 'const'",
-                        Some("identifier"),
-                    ));
-                }
+            // Constants may carry an optional type annotation, e.g.
+            // `const int MAX = 5;` or `const MAX = 5;`.
+            let type_annotation = if self.const_has_type_annotation() {
+                Some(self.parse_type_descriptor()?)
+            } else {
+                None
             };
+
+            let name = self.expect_ident("Expected constant name after 'const'")?;
             let name_span = self.previous_span();
 
             self.consume(
@@ -222,7 +240,7 @@ impl Parser {
             return Ok(Stmt::ConstDecl {
                 name,
                 name_span,
-                type_annotation: None,
+                type_annotation,
                 initializer,
                 span: decl_span,
             });
@@ -408,9 +426,9 @@ impl Parser {
     fn if_statement(&mut self) -> ParseResult<Stmt> {
         self.advance()?; // consume 'if'
         let if_span = self.previous_span();
-        self.consume(Token::LParen, "Expected '(' after 'if'", Some("'('"))?;
+        // Parentheses around the condition are optional in Ballerina; a leading
+        // `(` is parsed as a grouping expression, so `if (x)` and `if x` both work.
         let condition = self.expression()?;
-        self.consume(Token::RParen, "Expected ')' after condition", Some("')'"))?;
 
         self.consume(Token::LBrace, "Expected '{' before then block", Some("'{'"))?;
         let then_block = self.block()?;
@@ -444,9 +462,8 @@ impl Parser {
     fn while_statement(&mut self) -> ParseResult<Stmt> {
         self.advance()?; // consume 'while'
         let while_span = self.previous_span();
-        self.consume(Token::LParen, "Expected '(' after 'while'", Some("'('"))?;
+        // Parentheses around the condition are optional (see `if_statement`).
         let condition = self.expression()?;
-        self.consume(Token::RParen, "Expected ')' after condition", Some("')'"))?;
         self.consume(Token::LBrace, "Expected '{' before while body", Some("'{'"))?;
         let body = self.block()?;
         let span_end = self.previous_span().end;
@@ -576,12 +593,16 @@ impl Parser {
 
     /// Parses a single match pattern.
     fn match_pattern(&mut self) -> ParseResult<MatchPattern> {
-        // `var x` capture.
-        if self.match_token(&[Token::Var])? {
+        // `var` prefix: `var x` capture, or `var {..}` / `var [..]` destructuring.
+        if self.check(&Token::Var)
+            && !matches!(self.peek_n(1), Some(Token::LBrace) | Some(Token::LBracket))
+        {
+            self.advance()?; // 'var'
             let name = self.expect_ident("Expected binding name after 'var'")?;
             return Ok(MatchPattern::Binding(name));
         }
-        // Rest pattern `...rest`.
+        self.match_token(&[Token::Var])?; // optional `var` before a destructuring
+                                          // Rest pattern `...rest`.
         if self.match_token(&[Token::DotDotDot])? {
             let name = self.expect_ident("Expected name after '...'")?;
             return Ok(MatchPattern::Rest(name));
@@ -612,8 +633,12 @@ impl Parser {
             if !self.check(&Token::RBrace) {
                 loop {
                     let key = self.expect_ident_or_string("Expected key in mapping pattern")?;
-                    self.consume(Token::Colon, "Expected ':' in mapping pattern", Some("':'"))?;
-                    let value = self.match_pattern()?;
+                    // `{ key: pattern }` or shorthand `{ key }` (== `{ key: key }`).
+                    let value = if self.match_token(&[Token::Colon])? {
+                        self.match_pattern()?
+                    } else {
+                        MatchPattern::Binding(key.clone())
+                    };
                     fields.push((key, value));
                     if !self.match_token(&[Token::Comma])? {
                         break;
@@ -855,6 +880,7 @@ impl Parser {
     fn parse_params(&mut self) -> ParseResult<Vec<(String, TypeDescriptor)>> {
         let mut params = Vec::new();
         while !self.check(&Token::RParen) {
+            self.skip_annotations()?; // e.g. `@http:Payload T body`
             let param_type = self.parse_type_descriptor()?;
             self.match_token(&[Token::DotDotDot])?; // optional rest marker
             let param_name = self.expect_ident("Expected parameter name")?;
@@ -962,14 +988,27 @@ impl Parser {
     /// modelled as statements (e.g. type inclusions `*T;`), which the caller
     /// skips.
     fn class_member(&mut self) -> ParseResult<Option<Stmt>> {
+        // Annotations may precede a class/service member.
+        self.skip_annotations()?;
         // Skip member qualifiers (public/private/final/isolated/remote/resource/...).
+        let mut is_resource = false;
         loop {
             if self.match_token(&[Token::Public, Token::Final, Token::Isolated])? {
                 continue;
             }
+            // `readonly` as a member qualifier, but not `readonly & T` (a type).
+            if self.check_ctx_kw("readonly") && !matches!(self.peek_n(1), Some(Token::Amp)) {
+                self.advance()?;
+                continue;
+            }
+            if self.check_ctx_kw("resource") {
+                is_resource = true;
+                self.advance()?;
+                continue;
+            }
             if matches!(
                 self.peek(),
-                Some(Token::Identifier(s)) if matches!(s.as_str(), "private" | "remote" | "resource" | "readonly" | "transactional")
+                Some(Token::Identifier(s)) if matches!(s.as_str(), "private" | "remote" | "transactional")
             ) {
                 self.advance()?;
                 continue;
@@ -988,11 +1027,18 @@ impl Parser {
             return Ok(None);
         }
 
-        // Method: `function name(params) [returns T] { body }`.
+        // Method: `function name(params) [returns T] { body }`. Resource methods
+        // are `resource function <accessor> <resource-path>(params) ...`.
         if self.check(&Token::Function) {
             self.advance()?; // 'function'
             let keyword_span = self.previous_span();
-            let name = self.expect_ident("Expected method name")?;
+            let name = if is_resource {
+                let accessor = self.expect_ident("Expected resource accessor")?;
+                self.skip_resource_path_signature()?;
+                accessor
+            } else {
+                self.expect_ident("Expected method name")?
+            };
             let name_span = self.previous_span();
             self.consume(Token::LParen, "Expected '(' after method name", Some("'('"))?;
             let params = self.parse_params()?;
@@ -1117,20 +1163,69 @@ impl Parser {
         })
     }
 
-    /// Parses a `service` declaration. The header up to the body is consumed
-    /// leniently, then the `{ ... }` body is skipped (parse-tolerant).
+    /// Parses a `service` declaration. The header (path, `on`, listener
+    /// expression) is consumed leniently up to the body-opening brace, then the
+    /// body is parsed into member statements (fields and resource/remote methods).
     fn service_declaration(&mut self) -> ParseResult<Stmt> {
         self.advance()?; // consume 'service'
         let start = self.previous_span().start;
-        // Consume the header (path segments, `on`, listener expression) up to the
-        // body-opening brace. Track parens/brackets so a `{` inside the listener
-        // expression is not mistaken for the body.
-        while !self.check(&Token::LBrace) && !self.is_at_end() {
+        // Consume the header up to the top-level `{`, tracking `()`/`[]` depth so a
+        // `{` inside the listener expression is not mistaken for the body.
+        let mut paren_depth = 0i32;
+        loop {
+            match self.peek() {
+                Some(Token::LParen) | Some(Token::LBracket) => paren_depth += 1,
+                Some(Token::RParen) | Some(Token::RBracket) => paren_depth -= 1,
+                Some(Token::LBrace) if paren_depth <= 0 => break,
+                None => break,
+                _ => {}
+            }
             self.advance()?;
         }
-        self.skip_braced_block()?;
+        let members = self.braced_block_of_members()?;
         let end = self.previous_span().end;
-        Ok(Stmt::ServiceDecl { span: start..end })
+        Ok(Stmt::ServiceDecl {
+            members,
+            span: start..end,
+        })
+    }
+
+    /// Parses a `{ ... }` block of class/service members.
+    fn braced_block_of_members(&mut self) -> ParseResult<Vec<Stmt>> {
+        self.consume(Token::LBrace, "Expected '{'", Some("'{'"))?;
+        let mut members = Vec::new();
+        while !self.check(&Token::RBrace) && !self.is_at_end() {
+            if let Some(member) = self.class_member()? {
+                members.push(member);
+            }
+        }
+        self.consume(Token::RBrace, "Expected '}' at end of body", Some("'}'"))?;
+        Ok(members)
+    }
+
+    /// Consumes a resource method's path signature (segments after the accessor,
+    /// up to the parameter list `(`), including computed `[type name]` segments.
+    fn skip_resource_path_signature(&mut self) -> ParseResult<()> {
+        loop {
+            match self.peek() {
+                Some(Token::Dot) | Some(Token::Slash) | Some(Token::Identifier(_)) => {
+                    self.advance()?;
+                }
+                Some(Token::LBracket) => {
+                    self.advance()?;
+                    let mut depth = 1;
+                    while depth > 0 {
+                        match self.advance_owned()? {
+                            Token::LBracket => depth += 1,
+                            Token::RBracket => depth -= 1,
+                            _ => {}
+                        }
+                    }
+                }
+                _ => break,
+            }
+        }
+        Ok(())
     }
 
     /// Parses an `annotation` declaration leniently up to its terminating `;`.
@@ -1242,7 +1337,7 @@ impl Parser {
 
     /// Parses ternary and elvis operators (`? :`, `?:`).
     fn ternary(&mut self) -> ParseResult<Expr> {
-        let mut expr = self.logic_or()?;
+        let mut expr = self.range_expr()?;
 
         if self.match_token(&[Token::QuestionColon])? {
             // Elvis operator: expr ?: default
@@ -1274,6 +1369,22 @@ impl Parser {
         }
 
         Ok(expr)
+    }
+
+    /// Parses a range expression (`a...b` inclusive or `a..<b` half-open).
+    fn range_expr(&mut self) -> ParseResult<Expr> {
+        let start_expr = self.logic_or()?;
+        if self.match_token(&[Token::DotDotDot, Token::DotDotLt])? {
+            let end_expr = self.logic_or()?;
+            let span = start_expr.span().start..end_expr.span().end;
+            Ok(Expr::Range {
+                start: Box::new(start_expr),
+                end: Box::new(end_expr),
+                span,
+            })
+        } else {
+            Ok(start_expr)
+        }
     }
 
     /// Parses a logical OR expression (`||`).
@@ -1339,7 +1450,10 @@ impl Parser {
             // `e is T` type-test: the right-hand side is a type descriptor.
             if self.match_token(&[Token::Is])? {
                 let start = expr.span().start;
+                let was_in_is = self.in_is_type;
+                self.in_is_type = true;
                 let ty = self.parse_type_descriptor()?;
+                self.in_is_type = was_in_is;
                 let end = self.previous_span().end;
                 expr = Expr::TypeTest {
                     expr: Box::new(expr),
@@ -1551,23 +1665,27 @@ impl Parser {
                     };
                 }
             } else if self.match_token(&[Token::RightArrow])? {
-                // Remote method call: client->method(args)
-                let method = self.expect_ident("Expected remote method name after '->'")?;
-                self.consume(
-                    Token::LParen,
-                    "Expected '(' after remote method",
-                    Some("'('"),
-                )?;
+                // Remote method call `client->method(args)` or client resource
+                // access `client->/path/segments[.accessor](args)`.
+                let method = if self.check(&Token::Slash) {
+                    // Resource access: consume the `/path[/seg]...` and optional
+                    // trailing `.accessor`; arguments (if any) follow.
+                    self.parse_resource_path()?
+                } else {
+                    self.expect_ident("Expected remote method name after '->'")?
+                };
                 let mut arguments = Vec::new();
-                if !self.check(&Token::RParen) {
-                    loop {
-                        arguments.push(self.expression()?);
-                        if !self.match_token(&[Token::Comma])? {
-                            break;
+                if self.match_token(&[Token::LParen])? {
+                    if !self.check(&Token::RParen) {
+                        loop {
+                            arguments.push(self.expression()?);
+                            if !self.match_token(&[Token::Comma])? {
+                                break;
+                            }
                         }
                     }
+                    self.consume(Token::RParen, "Expected ')' after arguments", Some("')'"))?;
                 }
-                self.consume(Token::RParen, "Expected ')' after arguments", Some("')'"))?;
                 let close_span = self.previous_span();
                 let span = expr.span().start..close_span.end;
                 expr = Expr::RemoteCall {
@@ -1679,6 +1797,33 @@ impl Parser {
         Ok(self.make_call_expr(callee, arguments, open_span, close_span))
     }
 
+    /// Parses a client resource-access path following `->`, e.g. `/tasks`,
+    /// `/tasks/[id]`, or `/tasks.post`. Returns the resource accessor method name
+    /// (defaulting to `get`). Path segments are consumed but not retained.
+    fn parse_resource_path(&mut self) -> ParseResult<String> {
+        while self.match_token(&[Token::Slash])? {
+            if matches!(self.peek(), Some(Token::Identifier(_))) {
+                self.advance()?; // path segment
+            } else if self.match_token(&[Token::LBracket])? {
+                // Computed segment `[expr]`.
+                let _ = self.expression()?;
+                self.consume(
+                    Token::RBracket,
+                    "Expected ']' in resource path",
+                    Some("']'"),
+                )?;
+            } else {
+                break;
+            }
+        }
+        // Optional `.accessor` (get/post/put/...); defaults to `get`.
+        if self.match_token(&[Token::Dot])? {
+            self.expect_ident("Expected resource accessor after '.'")
+        } else {
+            Ok("get".to_string())
+        }
+    }
+
     /// Parses a single-parameter arrow function `x => body`.
     fn arrow_function_single(&mut self) -> ParseResult<Expr> {
         let name = self.expect_ident("Expected arrow parameter")?;
@@ -1745,12 +1890,22 @@ impl Parser {
         } else {
             None
         };
-        self.consume(
-            Token::LBrace,
-            "Expected '{' before function body",
-            Some("'{'"),
-        )?;
-        let body = self.block()?;
+        // Expression-bodied form: `function (...) returns T => expr`.
+        let body = if self.match_token(&[Token::Arrow])? {
+            let expr = self.expression()?;
+            let span = expr.span().clone();
+            vec![Stmt::Return {
+                value: Some(expr),
+                span,
+            }]
+        } else {
+            self.consume(
+                Token::LBrace,
+                "Expected '{' before function body",
+                Some("'{'"),
+            )?;
+            self.block()?
+        };
         let end = self.previous_span().end;
         Ok(Expr::AnonFunction {
             params,
@@ -1811,6 +1966,10 @@ impl Parser {
             } else if self.match_ctx_kw("select")? {
                 clauses.push(QueryClause::Select(self.expression()?));
                 break;
+            } else if self.match_ctx_kw("collect")? {
+                // `collect <expr>` is a terminal clause (like select).
+                clauses.push(QueryClause::Select(self.expression()?));
+                break;
             } else {
                 break;
             }
@@ -1834,36 +1993,45 @@ impl Parser {
     /// Parses a `from <binding> in <source>` clause.
     fn query_from_clause(&mut self) -> ParseResult<QueryClause> {
         self.match_ctx_kw("from")?;
-        let var = self.query_binding_name()?;
+        let vars = self.query_binding_names()?;
         self.consume(Token::In, "Expected 'in' in from clause", Some("'in'"))?;
         let source = self.expression()?;
-        Ok(QueryClause::From { var, source })
+        Ok(QueryClause::From { vars, source })
     }
 
     /// Parses the binding of a `from`/`join` clause, returning the bound name.
     /// A leading `var` or type descriptor is accepted; destructuring patterns are
     /// consumed leniently and yield an empty name.
-    fn query_binding_name(&mut self) -> ParseResult<String> {
-        if self.match_token(&[Token::Var])? {
-            return self.expect_ident("Expected binding name after 'var'");
-        }
+    fn query_binding_names(&mut self) -> ParseResult<Vec<String>> {
+        self.match_token(&[Token::Var])?; // optional `var`
+                                          // Destructuring binding: list `[a, b]` or mapping `{a, b}` — collect the
+                                          // identifier names so they are bound in the query scope.
         if self.check(&Token::LBracket) || self.check(&Token::LBrace) {
-            // Destructuring binding pattern — consume leniently.
-            let (open, close) = if self.check(&Token::LBracket) {
-                (Token::LBracket, Token::RBracket)
+            let close = if self.check(&Token::LBracket) {
+                Token::RBracket
             } else {
-                (Token::LBrace, Token::RBrace)
+                Token::RBrace
             };
-            self.advance()?;
-            let mut depth = 1;
-            while depth > 0 {
-                match self.advance_owned()? {
-                    ref t if *t == open => depth += 1,
-                    ref t if *t == close => depth -= 1,
-                    _ => {}
+            self.advance()?; // opening bracket/brace
+            let mut names = Vec::new();
+            while !self.check(&close) && !self.is_at_end() {
+                if let Token::Identifier(n) = self.advance_owned()? {
+                    names.push(n);
                 }
+                // A mapping field may rename (`key: binding`); the binding name is
+                // what matters, so a trailing `:` binding overrides.
+                if self.match_token(&[Token::Colon])? {
+                    if let Some(Token::Identifier(n)) = self.peek() {
+                        let n = n.clone();
+                        names.pop();
+                        names.push(n);
+                        self.advance()?;
+                    }
+                }
+                self.match_token(&[Token::Comma])?;
             }
-            return Ok(String::new());
+            self.consume(close, "Expected closing bracket in binding pattern", None)?;
+            return Ok(names);
         }
         // `<type> name` or bare `name`.
         if !(matches!(self.peek(), Some(Token::Identifier(_)))
@@ -1871,7 +2039,9 @@ impl Parser {
         {
             let _ = self.parse_type_descriptor()?;
         }
-        self.expect_ident("Expected binding name in query clause")
+        Ok(vec![
+            self.expect_ident("Expected binding name in query clause")?
+        ])
     }
 
     /// Parses a query `let` clause (`let T x = e, ...`), without a trailing `in`.
@@ -1880,7 +2050,10 @@ impl Parser {
         let mut bindings = Vec::new();
         loop {
             self.match_token(&[Token::Final])?;
-            let _ty = self.parse_type_descriptor()?;
+            // A binding is `var name` or `<type> name`.
+            if !self.match_token(&[Token::Var])? {
+                let _ty = self.parse_type_descriptor()?;
+            }
             let name = self.expect_ident("Expected variable name in let clause")?;
             self.consume(Token::Eq, "Expected '=' in let clause", Some("'='"))?;
             let value = self.expression()?;
@@ -1896,7 +2069,7 @@ impl Parser {
     fn query_join_clause(&mut self) -> ParseResult<QueryClause> {
         self.match_ctx_kw("outer")?;
         self.match_ctx_kw("join")?;
-        let var = self.query_binding_name()?;
+        let vars = self.query_binding_names()?;
         self.consume(Token::In, "Expected 'in' in join clause", Some("'in'"))?;
         let source = self.expression()?;
         self.consume(Token::On, "Expected 'on' in join clause", Some("'on'"))?;
@@ -1904,7 +2077,7 @@ impl Parser {
         self.match_ctx_kw("equals")?;
         let on_right = self.expression()?;
         Ok(QueryClause::Join {
-            var,
+            vars,
             source: Box::new(source),
             on_left: Box::new(on_left),
             on_right: Box::new(on_right),
@@ -2005,16 +2178,40 @@ impl Parser {
         if self.check(&Token::Function) && matches!(self.peek_n(1), Some(Token::LParen)) {
             return self.anonymous_function();
         }
-        // Query expression starts with the contextual keyword `from`.
+        // Typed template literal: `string \`...\``, `xml \`...\``, `re \`...\``, or
+        // an identifier prefix. Treated as a string literal (interpolation
+        // parsing is deferred).
+        if matches!(
+            self.peek(),
+            Some(Token::String) | Some(Token::Identifier(_))
+        ) && matches!(self.peek_n(1), Some(Token::StringTemplate(_)))
+        {
+            self.advance()?; // template-kind prefix
+            let start = self.previous_span().start;
+            if let Token::StringTemplate(s) = self.advance_owned()? {
+                let end = self.previous_span().end;
+                return Ok(Self::template_expr(&s, start..end));
+            }
+        }
+        // Query expression starts with the contextual keyword `from`, optionally
+        // prefixed by a collect type (`map from ...`, `table from ...`,
+        // `stream from ...`).
         if self.check_ctx_kw("from") {
             return self.query_expression();
         }
-        // Table constructor: `table key(...) [...]` or `table [ { ... }, ... ]`.
-        // Distinguished from indexing (`table[0]`) by a following `key` or `[{`.
+        if (self.check(&Token::Map) || self.check_ctx_kw("table") || self.check_ctx_kw("stream"))
+            && matches!(self.peek_n(1), Some(Token::Identifier(w)) if w == "from")
+        {
+            self.advance()?; // consume the collect-type keyword
+            return self.query_expression();
+        }
+        // Table constructor: `table key(...) [...]` or `table [ { ... }, ... ]`
+        // (including empty `table []`). Distinguished from indexing a variable
+        // named `table` (`table[0]`) by a following `key`, `[]`, or `[{`.
         if self.check_ctx_kw("table")
             && (matches!(self.peek_n(1), Some(Token::Identifier(k)) if k == "key")
                 || (matches!(self.peek_n(1), Some(Token::LBracket))
-                    && matches!(self.peek_n(2), Some(Token::LBrace))))
+                    && matches!(self.peek_n(2), Some(Token::LBrace | Token::RBracket))))
         {
             return self.table_constructor();
         }
@@ -2035,7 +2232,7 @@ impl Parser {
             Token::False => Ok(self.make_literal_expr(Literal::Boolean(false), token_span)),
             Token::Number(n) => Ok(self.make_literal_expr(Literal::Number(n), token_span)),
             Token::StringLiteral(s) => Ok(self.make_literal_expr(Literal::String(s), token_span)),
-            Token::StringTemplate(s) => Ok(self.make_literal_expr(Literal::String(s), token_span)), // Treat templates as strings for now
+            Token::StringTemplate(s) => Ok(Self::template_expr(&s, token_span)),
             Token::Identifier(name) => {
                 // Check for type cast: identifier followed by backtick is `type `template``
                 if matches!(self.peek(), Some(Token::StringTemplate(_))) {
@@ -2075,6 +2272,15 @@ impl Parser {
                 let close_span = self.previous_span();
                 Ok(self.make_grouping_expr(open_span, expr, close_span))
             }
+            // Builtin type keywords used as `typedesc` values, e.g. the second
+            // argument of `value:ensureType(v, string)`.
+            Token::Int => Ok(self.type_value_expr("int", token_span)),
+            Token::String => Ok(self.type_value_expr("string", token_span)),
+            Token::Boolean => Ok(self.type_value_expr("boolean", token_span)),
+            Token::Float => Ok(self.type_value_expr("float", token_span)),
+            Token::Decimal => Ok(self.type_value_expr("decimal", token_span)),
+            Token::Byte => Ok(self.type_value_expr("byte", token_span)),
+            Token::Anydata => Ok(self.type_value_expr("anydata", token_span)),
             Token::New => {
                 // Object construction: `new`, `new T(args)`, or `new (args)`.
                 let start = token_span.start;
@@ -2145,27 +2351,48 @@ impl Parser {
                 })
             }
             Token::LBrace => {
-                // Map literal: {key: value}
+                // Mapping constructor: `{ key: value, shorthand, ...spread, [computed]: v }`.
                 let open_span = token_span;
                 let mut entries = Vec::new();
 
                 if !self.check(&Token::RBrace) {
                     loop {
-                        let key_token = self.advance_owned()?;
-                        let key = match key_token {
-                            Token::StringLiteral(s) => s,
-                            Token::Identifier(s) => s,
-                            _ => {
-                                return Err(self.error_previous(
-                                    "Expected string key in map literal",
-                                    Some("string"),
-                                ))
+                        if self.match_token(&[Token::DotDotDot])? {
+                            // Spread field `...expr`.
+                            let value = self.expression()?;
+                            entries.push(("...".to_string(), value));
+                        } else if self.match_token(&[Token::LBracket])? {
+                            // Computed key `[expr]: value` — key expression accepted
+                            // but not retained.
+                            let _key = self.expression()?;
+                            self.consume(
+                                Token::RBracket,
+                                "Expected ']' after computed key",
+                                Some("']'"),
+                            )?;
+                            self.consume(
+                                Token::Colon,
+                                "Expected ':' after computed key",
+                                Some("':'"),
+                            )?;
+                            let value = self.expression()?;
+                            entries.push((String::new(), value));
+                        } else {
+                            let key =
+                                self.expect_ident_or_string("Expected key in mapping constructor")?;
+                            let key_span = self.previous_span();
+                            if self.match_token(&[Token::Colon])? {
+                                let value = self.expression()?;
+                                entries.push((key, value));
+                            } else {
+                                // Field shorthand `{ name }` == `{ name: name }`.
+                                let value = Expr::Variable {
+                                    name: key.clone(),
+                                    span: key_span,
+                                };
+                                entries.push((key, value));
                             }
-                        };
-
-                        self.consume(Token::Colon, "Expected ':' after map key", Some("':'"))?;
-                        let value = self.expression()?;
-                        entries.push((key, value));
+                        }
 
                         if !self.match_token(&[Token::Comma])? {
                             break;
@@ -2253,7 +2480,10 @@ impl Parser {
                     element_type: Box::new(type_desc),
                     dimension,
                 };
-            } else if self.match_token(&[Token::Question])? {
+            } else if self.check(&Token::Question)
+                && !(self.in_is_type && self.question_starts_ternary())
+            {
+                self.advance()?; // '?'
                 type_desc = TypeDescriptor::Optional(Box::new(type_desc));
             } else {
                 break;
@@ -2262,10 +2492,43 @@ impl Parser {
         Ok(type_desc)
     }
 
+    /// Heuristic used inside type parsing to tell an optional-type suffix `T?`
+    /// from a conditional expression `... is T ? a : b`: if the token after `?`
+    /// can begin an expression, the `?` belongs to a ternary and must not be
+    /// consumed as a type suffix.
+    fn question_starts_ternary(&self) -> bool {
+        // `{` and `[` are deliberately excluded: after `?` they are ambiguous with
+        // a block/body (`returns T? {`) or an array suffix (`int?[]`), which must
+        // win over a rare ternary whose true-branch is a constructor.
+        matches!(
+            self.peek_n(1),
+            Some(Token::Identifier(_))
+                | Some(Token::Number(_))
+                | Some(Token::StringLiteral(_))
+                | Some(Token::StringTemplate(_))
+                | Some(Token::True)
+                | Some(Token::False)
+                | Some(Token::LParen)
+                | Some(Token::Minus)
+                | Some(Token::Bang)
+                | Some(Token::Tilde)
+                | Some(Token::Lt)
+                | Some(Token::Check)
+                | Some(Token::Checkpanic)
+                | Some(Token::Trap)
+                | Some(Token::New)
+                | Some(Token::Typeof)
+                | Some(Token::Let)
+        )
+    }
+
     /// Parses a primary (atomic) type descriptor: builtins, `map<T>`, generics,
     /// records, objects, tuples, function types, singletons, `distinct`, and
     /// named/qualified type references.
     fn parse_type_primary(&mut self) -> ParseResult<TypeDescriptor> {
+        // Annotations may prefix a type in return/parameter/field position, e.g.
+        // `returns @http:Cache Payload` — skip them.
+        self.skip_annotations()?;
         // map<T>
         if self.match_token(&[Token::Map])? {
             self.consume(Token::Lt, "Expected '<' after 'map'", Some("'<'"))?;
@@ -2284,6 +2547,12 @@ impl Parser {
         }
         if self.check(&Token::LBracket) {
             return self.parse_tuple_type();
+        }
+        // Nil type `()`.
+        if self.check(&Token::LParen) && matches!(self.peek_n(1), Some(Token::RParen)) {
+            self.advance()?;
+            self.advance()?;
+            return Ok(TypeDescriptor::Basic("()".to_string()));
         }
         // Singleton literal types: 1, -1, "OPEN", true, false
         if matches!(
@@ -2463,6 +2732,11 @@ impl Parser {
                 continue;
             }
 
+            // Optional `readonly` field qualifier (but not the `readonly & T`
+            // intersection type, which parse_type_descriptor handles).
+            if self.check_ctx_kw("readonly") && !matches!(self.peek_n(1), Some(Token::Amp)) {
+                self.advance()?;
+            }
             let field_type = self.parse_type_descriptor()?;
             // Rest field `T...;`.
             if self.match_token(&[Token::DotDotDot])? {
@@ -2583,6 +2857,61 @@ impl Parser {
     /// Constructs a literal expression with its original source span.
     fn make_literal_expr(&self, value: Literal, span: Span) -> Expr {
         Expr::Literal { value, span }
+    }
+
+    /// Builds a reference to a builtin type used as a `typedesc` value in
+    /// expression position.
+    fn type_value_expr(&self, name: &str, span: Span) -> Expr {
+        Expr::Variable {
+            name: name.to_string(),
+            span,
+        }
+    }
+
+    /// Builds a `StringTemplate` expression, parsing each `${...}` interpolation
+    /// into a sub-expression so variable references inside templates are tracked.
+    /// Interpolation sub-expressions carry template-relative spans and are used
+    /// only for reference tracking, not for span-accurate diagnostics.
+    fn template_expr(content: &str, span: Span) -> Expr {
+        let mut interpolations = Vec::new();
+        let bytes = content.as_bytes();
+        let mut i = 0;
+        while i + 1 < bytes.len() {
+            if bytes[i] == b'$' && bytes[i + 1] == b'{' {
+                let start = i + 2;
+                let mut depth = 1;
+                let mut j = start;
+                while j < bytes.len() {
+                    match bytes[j] {
+                        b'{' => depth += 1,
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    j += 1;
+                }
+                let inner = &content[start..j.min(content.len())];
+                if let Ok(tokens) = crate::lexer::Lexer::new(inner).collect::<Result<Vec<_>, _>>() {
+                    if !tokens.is_empty() {
+                        let mut sub = Parser::new(tokens);
+                        if let Ok(expr) = sub.expression() {
+                            interpolations.push(expr);
+                        }
+                    }
+                }
+                i = j + 1;
+            } else {
+                i += 1;
+            }
+        }
+        Expr::StringTemplate {
+            interpolations,
+            span,
+        }
     }
 
     /// Builds a call expression while tracking the span of every argument.
@@ -2855,6 +3184,18 @@ impl Parser {
                 self.skip_type(0)
                     .is_some_and(|end| matches!(self.peek_n(end), Some(Token::Identifier(_))))
             }
+            _ => false,
+        }
+    }
+
+    /// Determines whether a `const` declaration carries a type annotation, i.e.
+    /// `const <type> <name>` rather than `const <name>`.
+    fn const_has_type_annotation(&self) -> bool {
+        match self.peek() {
+            Some(token) if Self::is_type_start(token) => true,
+            Some(Token::Identifier(_)) => self
+                .skip_type(0)
+                .is_some_and(|end| matches!(self.peek_n(end), Some(Token::Identifier(_)))),
             _ => false,
         }
     }
@@ -3783,7 +4124,9 @@ mod tests {
         let Expr::Query { clauses, .. } = query else {
             panic!("expected query")
         };
-        assert!(matches!(&clauses[0], QueryClause::From { var, .. } if var == "n"));
+        assert!(
+            matches!(&clauses[0], QueryClause::From { vars, .. } if vars == &vec!["n".to_string()])
+        );
         assert!(clauses.iter().any(|c| matches!(c, QueryClause::Where(_))));
         assert!(clauses.iter().any(|c| matches!(c, QueryClause::Let(_))));
         assert!(clauses.iter().any(|c| matches!(c, QueryClause::OrderBy(_))));
@@ -3797,9 +4140,9 @@ mod tests {
         let Expr::Query { clauses, .. } = query else {
             panic!("expected query")
         };
-        assert!(clauses
-            .iter()
-            .any(|c| matches!(c, QueryClause::Join { var, .. } if var == "b")));
+        assert!(clauses.iter().any(
+            |c| matches!(c, QueryClause::Join { vars, .. } if vars == &vec!["b".to_string()])
+        ));
     }
 
     #[test]
@@ -3825,8 +4168,8 @@ mod tests {
             panic!("expected type test")
         };
         assert!(matches!(ty, TypeDescriptor::Basic(n) if n == "int"));
-        // `is` inside a condition.
-        let body = fn_body("function f() { if (v is Employee) { } }");
+        // `is` inside a paren-less condition (Ballerina style).
+        let body = fn_body("function f() { if v is Employee { } }");
         assert!(matches!(
             &body[0],
             Stmt::If {

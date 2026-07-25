@@ -179,6 +179,11 @@ pub enum Expr {
     },
     /// `typeof e` expression.
     TypeOf { expr: Box<Expr>, span: Span },
+    /// A string/xml/raw template with parsed `${...}` interpolation expressions.
+    StringTemplate {
+        interpolations: Vec<Expr>,
+        span: Span,
+    },
     /// Type-test expression: `e is T`.
     TypeTest {
         expr: Box<Expr>,
@@ -226,15 +231,15 @@ pub enum Expr {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum QueryClause {
-    /// `from <binding> in <source>`.
-    From { var: String, source: Expr },
+    /// `from <binding> in <source>` (binding may destructure into several names).
+    From { vars: Vec<String>, source: Expr },
     /// `where <condition>`.
     Where(Expr),
     /// `let <bindings>`.
     Let(Vec<LetBinding>),
     /// `[outer] join <binding> in <source> on <lhs> equals <rhs>`.
     Join {
-        var: String,
+        vars: Vec<String>,
         source: Box<Expr>,
         on_left: Box<Expr>,
         on_right: Box<Expr>,
@@ -281,6 +286,7 @@ impl Expr {
             | Expr::New { span, .. }
             | Expr::Check { span, .. }
             | Expr::TypeOf { span, .. }
+            | Expr::StringTemplate { span, .. }
             | Expr::TypeTest { span, .. }
             | Expr::Let { span, .. }
             | Expr::AnonFunction { span, .. }
@@ -449,8 +455,9 @@ pub enum Stmt {
         members: Vec<Stmt>,
         span: Span,
     },
-    /// A service declaration. The body is currently parsed leniently.
-    ServiceDecl { span: Span },
+    /// A service declaration. The header is parsed leniently; the body is parsed
+    /// into member statements (fields and resource/remote methods).
+    ServiceDecl { members: Vec<Stmt>, span: Span },
     /// A listener declaration: `listener Type name = expr;`.
     ListenerDecl {
         name: String,
