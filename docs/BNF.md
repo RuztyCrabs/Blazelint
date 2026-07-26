@@ -39,7 +39,10 @@ The grammar Blazelint's parser implements, in the project's original BNF style.
                              | <annotation_declaration>
                              | <xmlns_declaration>
 
-<qualifier> ::= "public" | "isolated" | "transactional" | "client" | "service" | "distinct"
+<qualifier> ::= "public" | "isolated" | "transactional" | "client" | "service"
+              | "distinct" | "readonly" | "const"
+              (* `readonly`/`distinct` qualify only when the run ends in class/object;
+                 `const` only before `annotation` *)
 <annotation_attachment> ::= "@" <identifier> [":" <identifier>] [<map_literal>]
 
 <var_declaration> ::= ["final"] <typed_binding_pattern> ["=" <expression>] ";"
@@ -74,7 +77,8 @@ The grammar Blazelint's parser implements, in the project's original BNF style.
 
 <function_declaration> ::= <qualifier>* "function" <identifier>
                            "(" [<parameters>] ")" ["returns" <type_descriptor>] <function_body>
-<function_body> ::= <block> | "=>" <expression> ";" | "=" "external" ";"
+<function_body> ::= <block> | "=>" <expression> ";"
+                  | "=" <annotation_attachment>* "external" ";"
 <parameters> ::= <parameter> ("," <parameter>)*
 <parameter> ::= <annotation_attachment>* ["*"] <type_descriptor> ["..."] <identifier>
                 ["=" (<expression> | "<" ">")]
@@ -92,6 +96,7 @@ The grammar Blazelint's parser implements, in the project's original BNF style.
 
 <type_primary> ::= <basic_type>
                  | "(" ")"                                  (* nil type *)
+                 | "(" <type_descriptor> ")"                (* grouped, e.g. (any|error)[] *)
                  | "map" "<" <type_descriptor> ">"
                  | <generic_type>
                  | <tuple_type>
@@ -114,6 +119,7 @@ The grammar Blazelint's parser implements, in the project's original BNF style.
                       ["," <type_descriptor> "..."]] "]"
 <record_type> ::= "record" "{" <record_member>* "}"
                 | "record" "{|" <record_member>* "|}"
+                | "record" "{||}"                       (* empty closed record *)
 <record_member> ::= "*" <type_descriptor> ";"                            (* inclusion *)
                   | <type_descriptor> "..." ";"                          (* rest field *)
                   | ["readonly"] <type_descriptor> IDENTIFIER ["?"] ["=" <expression>] ";"
@@ -152,6 +158,7 @@ The grammar Blazelint's parser implements, in the project's original BNF style.
               | <xmlns_declaration>  | <expression_statement> | <block>
 
 <destructuring_declaration> ::= ["var"] [<type_descriptor>] <binding_pattern> "=" <expression> ";"
+   (* the type may itself begin with a bracket: `[int, string] [a, b] = t;` *)
 
 <if_statement> ::= "if" <expression> <block>
                    ["else" (<if_statement> | <block>)]      (* parentheses optional *)
@@ -202,7 +209,7 @@ The grammar Blazelint's parser implements, in the project's original BNF style.
 <logic_or> ::= <logic_and> ("||" <logic_and>)*
 <logic_and> ::= <equality> ("&&" <equality>)*
 <equality> ::= <comparison> (("==" | "!=" | "===" | "!==") <comparison>)*
-<comparison> ::= <shift> ((">" | ">=" | "<" | "<=") <shift> | "is" <type_descriptor>)*
+<comparison> ::= <shift> ((">" | ">=" | "<" | "<=") <shift> | ["!"] "is" <type_descriptor>)*
 <shift> ::= <additive> (("<<" | ">>" | ">>>") <additive>)*
 <additive> ::= <bitwise> (("+" | "-") <bitwise>)*
 <bitwise> ::= <multiplicative> (("&" | "|" | "^") <multiplicative>)*
@@ -247,7 +254,7 @@ The grammar Blazelint's parser implements, in the project's original BNF style.
             | <query_expression> | <start_action> | <wait_action>
             | "(" <expression> ")" | <cast_expression>
 
-<number_literal> ::= NUMBER | HEX_NUMBER                    (* `d`/`f` suffix accepted *)
+<number_literal> ::= NUMBER | HEX_NUMBER                    (* `0x1F`; `d`/`f` suffix accepted *)
 <string_literal> ::= DOUBLE_QUOTE_STRING
 <template> ::= [<template_tag>] "`" <template_part>* "`"
 <template_tag> ::= "string" | "xml" | "re" | "base16" | "base64" | IDENTIFIER

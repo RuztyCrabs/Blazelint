@@ -54,7 +54,7 @@ return-type-descriptor := "returns" [annots] type-descriptor
 function-defn-body := block-function-body | expr-function-body | external-function-body
 block-function-body := "{" statement* "}"
 expr-function-body := "=>" expression ";"
-external-function-body := "=" "external" ";"
+external-function-body := "=" annotation* "external" ";"
 
 param-list := param ("," param)*
 param := [annots] ["*"] type-descriptor ["..."] param-name ["=" default-value]
@@ -65,6 +65,7 @@ module-type-defn := metadata ["public"] "type" identifier type-descriptor ";"
 
 module-class-defn := metadata class-type-quals "class" identifier "{" class-member* "}"
 class-type-quals := ("public" | "distinct" | "readonly" | "isolated" | "client" | "service")*
+                    (* `readonly`/`distinct` qualify only when the run ends in class/object *)
 class-member := metadata object-member-qual*
                 ( method-defn | object-field | object-type-inclusion )
 object-member-qual := "public" | "private" | "final" | "isolated"
@@ -81,6 +82,8 @@ module-var-quals := ("public" | "final" | "isolated" | "configurable")*
                     (* `configurable T x = ?;` accepted; `?` marks a required value *)
 
 module-const-decl := metadata ["public"] "const" [type-descriptor] identifier "=" const-expr ";"
+annotation-decl := metadata ["public"] ["const"] "annotation" ... ";"
+                   (* attach-point list accepted without decomposition *)
 module-enum-decl := metadata ["public"] "enum" identifier "{" [enum-member ("," enum-member)*] "}"
 enum-member := metadata identifier ["=" const-expr]
 module-xmlns-decl := "xmlns" string-literal ["as" identifier] ";"
@@ -89,9 +92,6 @@ listener-decl := metadata ["public"] "listener" [type-descriptor] identifier "="
 service-decl := metadata ["isolated"] "service" [type-descriptor] [absolute-resource-path]
                 "on" expression-list "{" class-member* "}"
 absolute-resource-path := ("/" identifier)* | "/"
-
-annotation-decl := metadata ["public"] "annotation" ... ";"
-                   (* attach-point list accepted without decomposition *)
 ```
 
 ## 3. Type descriptors
@@ -109,11 +109,12 @@ type-primary :=
   | map-type-descriptor | record-type-descriptor | object-type-descriptor
   | tuple-type-descriptor | function-type-descriptor | generic-type-descriptor
   | singleton-type-descriptor | distinct-type-descriptor | type-reference
-  | nil-type-descriptor | type-qualifier* type-primary
+  | nil-type-descriptor | grouped-type-descriptor | type-qualifier* type-primary
 
 simple-type-descriptor := "int" | "float" | "decimal" | "boolean" | "byte"
                         | "anydata" | "json" | "any" | "never" | "readonly" | "handle"
 nil-type-descriptor := "(" ")"
+grouped-type-descriptor := "(" type-descriptor ")"   (* e.g. (any|error)[] *)
 type-qualifier := "isolated" | "client" | "service" | "transactional"
 
 map-type-descriptor := "map" "<" type-descriptor ">"
@@ -128,6 +129,7 @@ tuple-type-descriptor := "[" [type-descriptor ("," type-descriptor)*
 
 record-type-descriptor := "record" "{" record-member* "}"
                         | "record" "{|" record-member* "|}"
+                        | "record" "{||}"              (* empty closed record *)
 record-member := "*" type-descriptor ";"                              (* inclusion *)
                | type-descriptor "..." ";"                            (* rest field *)
                | ["readonly"] type-descriptor field-name ["?"] ["=" expression] ";"
@@ -241,7 +243,7 @@ logical-or-expr := logical-and-expr ("||" logical-and-expr)*
 logical-and-expr := equality-expr ("&&" equality-expr)*
 equality-expr := relational-expr (("==" | "!=" | "===" | "!==") relational-expr)*
 relational-expr := shift-expr (( "<" | "<=" | ">" | ">=" ) shift-expr | is-expr)*
-is-expr := "is" type-descriptor
+is-expr := ["!"] "is" type-descriptor
 shift-expr := additive-expr (("<<" | ">>" | ">>>") additive-expr)*
 additive-expr := binary-bitwise-expr (("+" | "-") binary-bitwise-expr)*
 binary-bitwise-expr := multiplicative-expr (("&" | "|" | "^") multiplicative-expr)*
