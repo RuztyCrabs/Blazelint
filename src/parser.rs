@@ -406,21 +406,23 @@ impl Parser {
 
         // Module path segments separated by `/` (org) and `.` (submodules), e.g.
         // `ballerina/lang.runtime` or `ballerinax/aws.lambda`.
-        let mut package_path = Vec::new();
-        package_path.push(self.expect_ident("Expected package name after 'import'")?);
+        let mut package_path = vec![self.expect_module_segment()?];
         loop {
             if self.match_token(&[Token::Slash, Token::Dot])? {
-                package_path.push(self.expect_ident("Expected package component")?);
+                package_path.push(self.expect_module_segment()?);
             } else {
                 break;
             }
         }
 
-        // Optional import alias: `import foo/bar as baz;`.
+        // Optional import alias: `import foo/bar as baz;` (or `as _`, meaning the
+        // module is imported for its side effects and exposes no prefix).
+        let mut alias = None;
         if self.check_ctx_kw("as") {
             self.advance()?; // 'as'
-                             // The alias may be an identifier or `_` (no prefix).
-            let _ = self.advance_owned()?;
+            if let Token::Identifier(name) = self.advance_owned()? {
+                alias = Some(name);
+            }
         }
 
         self.consume(Token::Semicolon, "Expected ';' after import", Some("';'"))?;
@@ -428,6 +430,7 @@ impl Parser {
 
         Ok(Stmt::Import {
             package_path,
+            alias,
             span: import_span_start..semicolon_span.end,
         })
     }
@@ -1087,13 +1090,16 @@ impl Parser {
         self.advance()?; // 'worker'
         let start = self.previous_span().start;
         let name = self.expect_ident("Expected worker name")?;
-        if self.match_token(&[Token::Returns])? {
-            let _ = self.parse_type_descriptor()?;
-        }
+        let return_type = if self.match_token(&[Token::Returns])? {
+            Some(self.parse_type_descriptor()?)
+        } else {
+            None
+        };
         let body = self.braced_block()?;
         let end = self.previous_span().end;
         Ok(Stmt::Worker {
             name,
+            return_type,
             body,
             span: start..end,
         })
@@ -3782,6 +3788,32 @@ impl Parser {
             Token::Identifier(name) => Ok(name),
             _ => Err(self.error_previous(msg, Some("identifier"))),
         }
+    }
+
+    /// Consumes one segment of a module path. Segments may be spelled with
+    /// words that are keywords elsewhere, as in `ballerina/lang.string` or
+    /// `ballerina/lang.error`, so keyword tokens are accepted here by name.
+    fn expect_module_segment(&mut self) -> ParseResult<String> {
+        let token = self.advance_owned()?;
+        let name = match token {
+            Token::Identifier(name) => name,
+            Token::Int => "int".to_string(),
+            Token::String => "string".to_string(),
+            Token::Boolean => "boolean".to_string(),
+            Token::Float => "float".to_string(),
+            Token::Decimal => "decimal".to_string(),
+            Token::Byte => "byte".to_string(),
+            Token::Map => "map".to_string(),
+            Token::Object => "object".to_string(),
+            Token::Function => "function".to_string(),
+            Token::Type => "type".to_string(),
+            Token::Transaction => "transaction".to_string(),
+            Token::Xmlns => "xmlns".to_string(),
+            _ => {
+                return Err(self.error_previous("Expected module path segment", Some("identifier")))
+            }
+        };
+        Ok(name)
     }
 
     /// Consumes the current token, requiring it to be an identifier or a string

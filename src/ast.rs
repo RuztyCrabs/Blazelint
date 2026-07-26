@@ -399,9 +399,11 @@ pub enum UnaryOp {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum Stmt {
-    /// Import declaration.
+    /// Import declaration. `alias` is the explicit `as` prefix, if any; the
+    /// module is otherwise referenced by the last path segment.
     Import {
         package_path: Vec<String>,
+        alias: Option<String>,
         span: Span,
     },
     /// A variable declaration statement.
@@ -540,6 +542,7 @@ pub enum Stmt {
     /// A named `worker <name> [returns T] { ... }` declaration.
     Worker {
         name: String,
+        return_type: Option<TypeDescriptor>,
         body: Vec<Stmt>,
         span: Span,
     },

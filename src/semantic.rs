@@ -68,6 +68,8 @@ pub struct Analyzer {
     diagnostics: Vec<Diagnostic>,
     current_function: Option<FunctionContext>,
     functions: HashSet<String>,
+    /// Module-level type, class, and enum names, usable as `typedesc` values.
+    types: HashSet<String>,
     imports: HashSet<String>,
     loop_depth: usize,
 }
@@ -80,6 +82,7 @@ impl Analyzer {
             diagnostics: Vec::new(),
             current_function: None,
             functions: HashSet::new(),
+            types: HashSet::new(),
             imports: HashSet::new(),
             loop_depth: 0,
         }
@@ -101,10 +104,24 @@ impl Analyzer {
     /// Validates a single statement node and updates scope state as needed.
     fn check_stmt(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::Import { package_path, .. } => {
-                // Track imported module
-                let module_name = package_path.last().unwrap_or(&String::new()).clone();
-                self.imports.insert(module_name);
+            Stmt::Import {
+                package_path,
+                alias,
+                ..
+            } => {
+                // A module is referenced by its explicit alias when given, and
+                // otherwise by the last segment of its path
+                // (`ballerina/lang.value` -> `value`).
+                match alias {
+                    Some(name) => {
+                        self.imports.insert(name.clone());
+                    }
+                    None => {
+                        if let Some(last) = package_path.last() {
+                            self.imports.insert(last.clone());
+                        }
+                    }
+                }
             }
             Stmt::VarDecl {
                 is_final,
@@ -456,11 +473,46 @@ impl Analyzer {
             | Stmt::ListenerDecl { .. }
             | Stmt::AnnotationDecl { .. }
             | Stmt::Xmlns { .. } => {}
+            // A worker's name is visible to its peers for send/receive/wait, so
+            // it is bound in the enclosing scope rather than its own.
+            Stmt::Worker {
+                name,
+                return_type,
+                body,
+                span,
+            } => {
+                self.current_scope_mut().insert(
+                    name.clone(),
+                    Symbol {
+                        ty: Type::Unknown("worker".to_string()),
+                        is_final: true,
+                        is_const: false,
+                        initialized: true,
+                        declared_span: span.clone(),
+                    },
+                );
+                // A worker has its own return type; `return` inside it must be
+                // checked against that, not the enclosing function's.
+                let worker_ret = return_type
+                    .as_ref()
+                    .map(|t| self.type_from_annotation(t))
+                    .unwrap_or(Type::Nil);
+                let previous = self.current_function.take();
+                self.current_function = Some(FunctionContext {
+                    return_type: worker_ret,
+                    returns_nilable: return_type.as_ref().is_some_and(|t| t.is_nilable()),
+                });
+                self.with_scope(|analyzer| {
+                    for stmt in body {
+                        analyzer.check_stmt(stmt);
+                    }
+                });
+                self.current_function = previous;
+            }
             Stmt::Block { body, .. }
             | Stmt::Lock { body, .. }
             | Stmt::Transaction { body, .. }
-            | Stmt::Retry { body, .. }
-            | Stmt::Worker { body, .. } => {
+            | Stmt::Retry { body, .. } => {
                 self.with_scope(|analyzer| {
                     for stmt in body {
                         analyzer.check_stmt(stmt);
@@ -1233,10 +1285,10 @@ impl Analyzer {
         if name == "_" {
             return Type::Unknown("wildcard".to_string());
         }
-        // A module-qualified reference (`http:ACCEPTED`, `mod:CONST`) resolves in
-        // the imported module, which this single-file linter does not load.
+        // A module-qualified reference (`http:ACCEPTED`, `int:MAX_VALUE`)
+        // resolves in a module this single-file linter does not load.
         if let Some((module, _)) = name.split_once(':') {
-            if self.imports.contains(module) {
+            if self.is_opaque_module(module) {
                 return Type::Unknown(name.to_string());
             }
         }
@@ -1268,11 +1320,19 @@ impl Analyzer {
                     format!("Variable '{name}' may be used before it is initialised"),
                 );
             }
-            symbol.ty
-        } else {
-            self.report(span, format!("Use of undeclared variable '{name}'"));
-            Type::Unknown(name.to_string())
+            return symbol.ty;
         }
+        // Functions are first-class values, so a bare function name is a valid
+        // reference (`var handlers = [onOpen, onClose];`).
+        if self.functions.contains(name) {
+            return Type::Unknown("function".to_string());
+        }
+        // A type name used as a value is a `typedesc` (`v.ensureType(Student)`).
+        if self.types.contains(name) {
+            return Type::Unknown("typedesc".to_string());
+        }
+        self.report(span, format!("Use of undeclared variable '{name}'"));
+        Type::Unknown(name.to_string())
     }
 
     /// Searches the scope stack for a symbol without taking ownership.
@@ -1331,15 +1391,11 @@ impl Analyzer {
                     return Type::Error;
                 }
 
-                // Check for qualified call (module:function)
-                if name.contains(':') {
-                    let parts: Vec<&str> = name.split(':').collect();
-                    if parts.len() == 2 {
-                        let module = parts[0];
-                        if self.imports.contains(module) {
-                            // Valid imported function call
-                            return Type::Unknown(format!("call:{name}"));
-                        }
+                // A qualified call into an imported or lang-library module
+                // (`io:println`, `string:fromBytes`) cannot be checked here.
+                if let Some((module, _)) = name.split_once(':') {
+                    if self.is_opaque_module(module) {
+                        return Type::Unknown(format!("call:{name}"));
                     }
                 }
 
@@ -1414,6 +1470,39 @@ impl Analyzer {
             TypeDescriptor::Distinct(inner) => self.type_from_annotation(inner),
             TypeDescriptor::Qualified { module, name } => Type::Unknown(format!("{module}:{name}")),
         }
+    }
+
+    /// Returns true when `module` names a module whose contents this linter
+    /// cannot see: an imported module, or one of the `lang.*` libraries that are
+    /// available without an import (`int:max`, `string:fromBytes`, `xml:concat`,
+    /// `transaction:onCommit`, …). References into such a module are accepted
+    /// rather than reported as undefined.
+    fn is_opaque_module(&self, module: &str) -> bool {
+        const LANG_LIBS: &[&str] = &[
+            "int",
+            "float",
+            "decimal",
+            "boolean",
+            "string",
+            "array",
+            "map",
+            "table",
+            "xml",
+            "value",
+            "error",
+            "function",
+            "future",
+            "object",
+            "stream",
+            "typedesc",
+            "runtime",
+            "transaction",
+            "regexp",
+            "query",
+            "test",
+            "java",
+        ];
+        self.imports.contains(module) || LANG_LIBS.contains(&module)
     }
 
     /// Appends a semantic diagnostic covering the provided span.
@@ -1511,6 +1600,12 @@ impl Analyzer {
                 Stmt::Function { name, body, .. } => {
                     self.functions.insert(name.clone());
                     self.collect_functions(body);
+                }
+                // Type, class, and enum names may be used as `typedesc` values.
+                Stmt::TypeDef { name, .. }
+                | Stmt::ClassDef { name, .. }
+                | Stmt::EnumDef { name, .. } => {
+                    self.types.insert(name.clone());
                 }
                 Stmt::If {
                     then_branch,
