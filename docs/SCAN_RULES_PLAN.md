@@ -21,7 +21,8 @@ change and no new analysis capability.
 | | Count |
 |---|---|
 | Official scan rules | 27 (12 language + 15 library) |
-| Implemented | **1** — `ballerina:2` unused function parameter |
+| Baseline (before this plan) | **1** — `ballerina:2` unused function parameter |
+| Implemented now | **7** |
 | After this plan | **7** (26%) |
 
 Our other six rules (`camel-case`, `constant-case`, `line-length`,
@@ -130,13 +131,12 @@ Add to `Config::default()`:
 | `isolated-public-function` | `off` | Advisory; noisy outside concurrent code |
 | `isolated-public-method` | `off` | ” |
 | `isolated-public-class` | `off` | ” |
-| `unused-parameters` | `off` → **`warn`** | Reconsider: `bal scan` ships this on as `ballerina:2`. Aligning improves parity honestly, at the cost of noise on callback signatures. |
+| `unused-parameters` | `off` | Intentional divergence from `bal scan`, which ships this on as `ballerina:2`: it fires on callback signatures that cannot drop a parameter. |
 
-Note the `unused-parameters` question is a genuine trade-off, not an oversight:
-we turned it off last session precisely because it fired 27 times on the example
-corpus, nearly all on signatures that cannot drop a parameter. Recommend keeping
-it `off` by default and documenting the divergence, rather than importing the
-noise to match a number.
+The `unused-parameters` divergence is a deliberate trade-off, not an oversight:
+we turned it off because it fired 27 times on the example corpus, nearly all on
+signatures that cannot drop a parameter. It stays `off` by default and the
+divergence is documented, rather than importing the noise to match a number.
 
 ## 6. Verification
 

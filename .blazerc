@@ -11,6 +11,14 @@ self-assignment = "warn"
 invalid-range = "warn"
 unused-variables = "error"
 
+# Advisory scan rules — opt in by raising these to "warn".
+# A rule omitted from this file does not run at all, so listing them as "off"
+# is documentation, not a behaviour change.
+unused-parameters = "off"          # ballerina:2
+isolated-public-function = "off"   # ballerina:3
+isolated-public-method = "off"     # ballerina:4
+isolated-public-class = "off"      # ballerina:5
+
 [settings]
 max-line-length = 120
 max-function-length = 50

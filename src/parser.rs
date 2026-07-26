@@ -413,10 +413,13 @@ impl Parser {
     /// Consumes a run of module-level qualifier keywords, returning whether
     /// `public` was seen and the list of qualifier lexemes (for AST retention).
     ///
-    /// Only `public` and `isolated` are treated as leading qualifiers here.
-    /// `readonly`, `distinct`, and `transactional` are deliberately excluded
-    /// because they are primarily type-level constructors (`readonly & T`,
-    /// `distinct T`) that must reach `parse_type_descriptor` at declaration start.
+    /// `public` and `isolated` are always consumed here. `readonly` and
+    /// `distinct` are consumed only when `qualifies_a_class` confirms a class
+    /// declaration follows, so the type-level constructors (`readonly & T`,
+    /// `distinct T`) still reach `parse_type_descriptor` at declaration start.
+    /// `transactional`, `client`, and `service` are consumed as contextual
+    /// keywords, with `service` excluded when a `/` marks a service declaration
+    /// (`service /path on ...`) rather than a class qualifier.
     fn parse_leading_qualifiers(&mut self) -> ParseResult<(bool, Vec<String>)> {
         let mut is_public = false;
         let mut qualifiers = Vec::new();
@@ -1054,6 +1057,10 @@ impl Parser {
         self.advance()?; // 'lock'
         let start = self.previous_span().start;
         let body = self.braced_block()?;
+        // `lock { } on fail e { }` is legal. `Stmt::Lock` has no on-fail fields,
+        // so the clause is parsed and discarded — otherwise `on` would reach
+        // expression parsing as a stray statement.
+        let _on_fail = self.parse_on_fail()?;
         let end = self.previous_span().end;
         Ok(Stmt::Lock {
             body,
@@ -1737,14 +1744,24 @@ impl Parser {
             }
 
             // Field/index lvalues (`self.count = x`, `arr[i] += 1`) are valid
-            // assignment targets. The compound-operator distinction is not retained
-            // here (member-assignment semantics are deferred).
+            // assignment targets. The compound operator is retained on the node
+            // rather than desugared, since `Expr` is not `Clone` and the target
+            // would have to be duplicated to build the binary form.
             if matches!(expr, Expr::FieldAccess { .. } | Expr::MemberAccess { .. }) {
                 let span_start = expr.span().start.min(assign_span.start);
                 let span_end = value_span_end.max(assign_span.end);
+
+                let op = match op_token {
+                    Token::Eq => None,
+                    Token::PlusEq => Some(BinaryOp::PlusAssign),
+                    Token::MinusEq => Some(BinaryOp::MinusAssign),
+                    _ => unreachable!(),
+                };
+
                 return Ok(Expr::MemberAssign {
                     target: Box::new(expr),
                     value: Box::new(value),
+                    op,
                     span: span_start..span_end,
                 });
             }
@@ -2506,7 +2523,10 @@ impl Parser {
         let mut bindings = Vec::new();
         loop {
             self.match_token(&[Token::Final])?; // optional 'final'
-            let _ty = self.parse_type_descriptor()?;
+                                                // A binding is `var name` or `<type> name`, as in `query_let_clause`.
+            if !self.match_token(&[Token::Var])? {
+                let _ty = self.parse_type_descriptor()?;
+            }
             let name = self.expect_ident("Expected variable name in let binding")?;
             self.consume(Token::Eq, "Expected '=' in let binding", Some("'='"))?;
             let value = self.expression()?;

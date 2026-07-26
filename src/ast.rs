@@ -134,9 +134,13 @@ pub enum Expr {
     },
     /// Assignment to a non-variable lvalue (field or index target), e.g.
     /// `self.count = 1` or `arr[i] = x`. Simple-variable assignment uses `Assign`.
+    ///
+    /// `op` is `None` for a plain `=` and carries the operator for a compound
+    /// assignment (`arr[i] += 1`), which reads `target = target op value`.
     MemberAssign {
         target: Box<Expr>,
         value: Box<Expr>,
+        op: Option<BinaryOp>,
         span: Span,
     },
     /// Method call expression (e.g., obj.method()).

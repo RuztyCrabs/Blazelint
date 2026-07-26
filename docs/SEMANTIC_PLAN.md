@@ -4,9 +4,10 @@
 parser now structures, so Blazelint's *output* is trustworthy on real code, not
 just its parsing.
 
-**Current state** — 99/163 corpus files (60%) are diagnostic-free. The other 64
-produce **207 diagnostics, and the sampled ones are all false positives**: the
-official Ballerina 2201.10.0 compiler accepts every file Blazelint rejects.
+**Baseline before this plan** — 99/163 corpus files (60%) were diagnostic-free.
+The other 64 produced **207 diagnostics, and the sampled ones were all false
+positives**: the official Ballerina 2201.10.0 compiler accepted every file
+Blazelint rejected. (Phases A–E have since shipped — see §4 for the results.)
 
 **Target** — ≥95% of corpus files diagnostic-free, with zero false positives
 maintained, and every parser AST node reachable by both analysis passes.
