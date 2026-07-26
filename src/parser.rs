@@ -3454,6 +3454,21 @@ impl Parser {
     fn parse_record_type(&mut self) -> ParseResult<TypeDescriptor> {
         self.consume(Token::Record, "Expected 'record'", Some("'record'"))?;
         self.consume(Token::LBrace, "Expected '{' after 'record'", Some("'{'"))?;
+        // An empty closed record is written `{||}`. The lexer emits the two
+        // pipes as one `||` token, and both belong to this record: the first
+        // closes `{|`, the second opens `|}`.
+        if self.match_token(&[Token::PipePipe])? {
+            self.consume(
+                Token::RBrace,
+                "Expected '}' to close an empty record type",
+                Some("'}'"),
+            )?;
+            return Ok(TypeDescriptor::Record {
+                fields: Vec::new(),
+                rest: None,
+                closed: true,
+            });
+        }
         let closed = self.match_token(&[Token::Pipe])?; // `{|`
         let mut fields = Vec::new();
         let mut rest = None;
