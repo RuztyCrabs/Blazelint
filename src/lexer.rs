@@ -67,6 +67,7 @@ pub enum Token {
     Plus,
     Minus,
     Star,
+    StarStar, // ** (XML descendants step)
     Slash,
     Percent,
     Bang,
@@ -93,10 +94,11 @@ pub enum Token {
     Question,
     QuestionColon,
     DotDotDot,
-    DotDotLt,   // ..<
-    Arrow,      // =>
-    RightArrow, // ->
-    LeftArrow,  // <- (worker receive)
+    DotDotLt,     // ..<
+    Arrow,        // =>
+    RightArrow,   // ->
+    RightArrowGt, // ->> (synchronous send)
+    LeftArrow,    // <- (worker receive)
 
     // Delimiters
     LParen,
@@ -141,7 +143,7 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    /// Skips whitespace and comments, reporting unterminated block comments as errors.
+    /// Skips whitespace, `//` line comments, and `#` markdown documentation lines.
     fn skip_whitespace_and_comments(&mut self) -> Result<(), LexError> {
         loop {
             if self.is_at_end() {
@@ -167,10 +169,12 @@ impl<'input> Lexer<'input> {
                         self.advance();
                     }
                 }
+                // Ballerina has only `//` line comments — there is no `/* */`
+                // block-comment form (the official compiler rejects `/*` as an
+                // invalid token). Treating `/*` as a comment would also swallow
+                // the XML all-children navigation step `x/*`.
                 '/' => {
-                    let comment_start = self.current;
                     if self.peek_next() == Some('/') {
-                        // Single-line comment //
                         self.advance(); // Consume '/'
                         self.advance(); // Consume second '/'
                         while self.peek() != Some(&'\n') && !self.is_at_end() {
@@ -178,26 +182,6 @@ impl<'input> Lexer<'input> {
                         }
                         if self.peek() == Some(&'\n') {
                             self.advance();
-                        }
-                    } else if self.peek_next() == Some('*') {
-                        // Multi-line comment /* ... */
-                        self.advance(); // consume '/'
-                        self.advance(); // consume '*'
-                        let mut found_end_comment = false;
-                        while !self.is_at_end() {
-                            if self.peek() == Some(&'*') && self.peek_next() == Some('/') {
-                                self.advance(); // Consume '*'
-                                self.advance(); // Consume '/'
-                                found_end_comment = true;
-                                break;
-                            }
-                            self.advance();
-                        }
-                        if !found_end_comment {
-                            return Err(LexError::new(
-                                "Unterminated block comment",
-                                comment_start..self.current,
-                            ));
                         }
                     } else {
                         return Ok(());
@@ -523,12 +507,23 @@ impl Iterator for Lexer<'_> {
                 if self.match_char('=') {
                     Ok(self.create_token(Token::MinusEq))
                 } else if self.match_char('>') {
-                    Ok(self.create_token(Token::RightArrow))
+                    if self.match_char('>') {
+                        // `->>` synchronous send action.
+                        Ok(self.create_token(Token::RightArrowGt))
+                    } else {
+                        Ok(self.create_token(Token::RightArrow))
+                    }
                 } else {
                     Ok(self.create_token(Token::Minus))
                 }
             }
-            '*' => Ok(self.create_token(Token::Star)),
+            '*' => {
+                if self.match_char('*') {
+                    Ok(self.create_token(Token::StarStar))
+                } else {
+                    Ok(self.create_token(Token::Star))
+                }
+            }
             '/' => Ok(self.create_token(Token::Slash)),
             '%' => Ok(self.create_token(Token::Percent)),
             '~' => Ok(self.create_token(Token::Tilde)),

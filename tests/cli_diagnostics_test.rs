@@ -212,12 +212,22 @@ fn lexer_reports_unterminated_string() {
 }
 
 #[test]
-fn lexer_reports_unterminated_block_comment() {
-    let (output, file_path) = run_cli("var a = 1; /* unterminated block comment");
-    assert!(!output.status.success());
+fn lexer_has_no_block_comments() {
+    // Ballerina has only `//` line comments; the official compiler rejects `/*`
+    // as an invalid token. Blazelint must not treat `/* ... */` as a comment,
+    // otherwise the XML all-children step `x/*` would be swallowed.
+    let (output, _file_path) = run_cli("xml a = d/*;");
     let out = stdout(&output);
-    assert!(out.contains("Error: Unterminated block comment"));
-    assert!(out.contains(&format!("  --> {}:1:12", file_path.display())));
+    assert!(
+        !out.contains("Unterminated block comment"),
+        "`/*` must not start a block comment, got:\n{out}"
+    );
+
+    // A `//` line comment is still skipped.
+    let (output, _file_path) = run_cli("// just a comment\nfunction f() { }\n");
+    let out = stdout(&output);
+    assert!(!out.contains("Error:"), "line comment should parse: {out}");
+    assert!(output.status.success());
 }
 
 #[test]

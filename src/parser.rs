@@ -181,6 +181,26 @@ impl Parser {
                 }
             }
         }
+        // Error binding pattern: `error(msg) = e;`, `var error(m) = e;`, or
+        // `SampleErr error(m) = e;` (optionally prefixed by an error type ref).
+        // Distinguished from an `error(..)` constructor call by the `=` that
+        // must follow the closing paren.
+        let base = if matches!(self.peek(), Some(Token::Var)) {
+            1
+        } else {
+            0
+        };
+        let at_error = matches!(self.peek_n(base), Some(Token::Identifier(s)) if s == "error")
+            && matches!(self.peek_n(base + 1), Some(Token::LParen));
+        let at_typed_error = matches!(self.peek_n(base), Some(Token::Identifier(_)))
+            && matches!(self.peek_n(base + 1), Some(Token::Identifier(s)) if s == "error")
+            && matches!(self.peek_n(base + 2), Some(Token::LParen));
+        if at_error || at_typed_error {
+            let paren = if at_error { base + 1 } else { base + 2 };
+            if let Some(end) = self.scan_balanced(paren, &Token::LParen, &Token::RParen) {
+                return matches!(self.peek_n(end), Some(Token::Eq));
+            }
+        }
         false
     }
 
@@ -188,8 +208,16 @@ impl Parser {
     fn destructure_decl(&mut self) -> ParseResult<Stmt> {
         let start = self.current_span().start;
         self.match_token(&[Token::Var])?; // optional `var`
-                                          // Optional leading type (`Rec {x, y} = ...`).
-        if !self.check(&Token::LBrace) && !self.check(&Token::LBracket) {
+                                          // Optional leading error-type reference: `SampleErr error(m) = ...`.
+        if matches!(self.peek(), Some(Token::Identifier(_)))
+            && matches!(self.peek_n(1), Some(Token::Identifier(s)) if s == "error")
+        {
+            self.advance()?;
+        }
+        let is_error_pattern = matches!(self.peek(), Some(Token::Identifier(s)) if s == "error")
+            && matches!(self.peek_n(1), Some(Token::LParen));
+        // Optional leading type (`Rec {x, y} = ...`).
+        if !is_error_pattern && !self.check(&Token::LBrace) && !self.check(&Token::LBracket) {
             let _ = self.parse_type_descriptor()?;
         }
         let mut names = Vec::new();
@@ -222,6 +250,43 @@ impl Parser {
         names: &mut Vec<String>,
         spans: &mut Vec<Span>,
     ) -> ParseResult<()> {
+        // Error binding pattern `error(msg, cause, field = binding)`.
+        if matches!(self.peek(), Some(Token::Identifier(s)) if s == "error")
+            && matches!(self.peek_n(1), Some(Token::LParen))
+        {
+            self.advance()?; // 'error'
+            self.advance()?; // '('
+            while !self.check(&Token::RParen) && !self.is_at_end() {
+                if self.match_token(&[Token::DotDotDot])? {
+                    names.push(self.expect_ident("Expected name after '...'")?);
+                    spans.push(self.previous_span());
+                } else if self.check(&Token::LBrace) || self.check(&Token::LBracket) {
+                    self.parse_binding_pattern(names, spans)?;
+                } else {
+                    self.match_token(&[Token::Var])?; // optional `var`
+                    let name = self.expect_ident("Expected binding in error pattern")?;
+                    let name_span = self.previous_span();
+                    // Named-arg form `field = binding`: the binding is what binds.
+                    if self.match_token(&[Token::Eq])? {
+                        self.match_token(&[Token::Var])?;
+                        names.push(self.expect_ident("Expected binding after '='")?);
+                        spans.push(self.previous_span());
+                    } else {
+                        names.push(name);
+                        spans.push(name_span);
+                    }
+                }
+                if !self.match_token(&[Token::Comma])? {
+                    break;
+                }
+            }
+            self.consume(
+                Token::RParen,
+                "Expected ')' in error binding pattern",
+                Some("')'"),
+            )?;
+            return Ok(());
+        }
         if self.match_token(&[Token::LBrace])? {
             while !self.check(&Token::RBrace) && !self.is_at_end() {
                 if self.match_token(&[Token::DotDotDot])? {
@@ -819,8 +884,9 @@ impl Parser {
             let mut fields = Vec::new();
             if !self.check(&Token::RBrace) {
                 loop {
-                    // Rest field `...rest`.
+                    // Rest field `...rest` / `...var rest`.
                     if self.match_token(&[Token::DotDotDot])? {
+                        self.match_token(&[Token::Var])?; // optional `var`
                         let name = self.expect_ident("Expected name after '...'")?;
                         fields.push((String::new(), MatchPattern::Rest(name)));
                         self.match_token(&[Token::Comma])?;
@@ -875,11 +941,21 @@ impl Parser {
         if name == "_" {
             return Ok(MatchPattern::Wildcard);
         }
-        if name == "error" && self.check(&Token::LParen) {
+        if name == "error" && self.check(&Token::LParen)
+            || (self.check(&Token::LParen) && matches!(self.peek_n(1), Some(Token::Identifier(_))))
+                && name.ends_with("Error")
+        {
             self.advance()?; // '('
             let mut items = Vec::new();
             if !self.check(&Token::RParen) {
                 loop {
+                    // Named-arg field pattern `field = pattern`.
+                    if matches!(self.peek(), Some(Token::Identifier(_)))
+                        && matches!(self.peek_n(1), Some(Token::Eq))
+                    {
+                        self.advance()?; // field name
+                        self.advance()?; // '='
+                    }
                     items.push(self.match_pattern()?);
                     if !self.match_token(&[Token::Comma])? {
                         break;
@@ -1063,9 +1139,23 @@ impl Parser {
         })
     }
 
-    /// Parses a named function/method body: either a `{ block }` or an
-    /// expression body `=> expr;`.
+    /// Parses a named function/method body: a `{ block }`, an expression body
+    /// `=> expr;`, or an external body `= external;`.
     fn named_function_body(&mut self) -> ParseResult<Vec<Stmt>> {
+        // External function body: `= external;` (implementation supplied by the
+        // runtime, so there is no body to analyze).
+        if self.check(&Token::Eq)
+            && matches!(self.peek_n(1), Some(Token::Identifier(s)) if s == "external")
+        {
+            self.advance()?; // '='
+            self.advance()?; // 'external'
+            self.consume(
+                Token::Semicolon,
+                "Expected ';' after external function body",
+                Some("';'"),
+            )?;
+            return Ok(Vec::new());
+        }
         if self.match_token(&[Token::Arrow])? {
             let expr = self.expression()?;
             let span = expr.span().clone();
@@ -1100,7 +1190,13 @@ impl Parser {
             self.match_token(&[Token::DotDotDot])?; // optional rest marker
             let param_name = self.expect_ident("Expected parameter name")?;
             if self.match_token(&[Token::Eq])? {
-                let _default = self.expression()?;
+                // `<>` is the inferred-typedesc default (`typedesc<any> t = <>`).
+                if self.check(&Token::Lt) && matches!(self.peek_n(1), Some(Token::Gt)) {
+                    self.advance()?;
+                    self.advance()?;
+                } else {
+                    let _default = self.expression()?;
+                }
             }
             params.push((param_name, param_type));
             if !self.check(&Token::RParen) {
@@ -1796,6 +1892,25 @@ impl Parser {
                 span: start..end,
             });
         }
+        // `flush [peer-worker]` action; the peer worker is optional.
+        if self.check_ctx_kw("flush") {
+            self.advance()?;
+            let start = self.previous_span().start;
+            let operand = if matches!(self.peek(), Some(Token::Identifier(_))) {
+                self.unary()?
+            } else {
+                Expr::Literal {
+                    value: Literal::Nil,
+                    span: start..start,
+                }
+            };
+            let end = operand.span().end.max(start);
+            return Ok(Expr::Check {
+                keyword: "flush".to_string(),
+                expr: Box::new(operand),
+                span: start..end,
+            });
+        }
         // check / checkpanic / trap / wait prefixes.
         if matches!(
             self.peek(),
@@ -1909,6 +2024,41 @@ impl Parser {
                         span,
                     };
                 }
+            } else if self.check(&Token::Slash)
+                && matches!(
+                    self.peek_n(1),
+                    Some(Token::Lt) | Some(Token::Star) | Some(Token::StarStar)
+                )
+            {
+                // XML navigation: `x/<name>` (children), `x/*` (all children),
+                // `x/**/<name>` (descendants). The step is recorded as a field
+                // access so downstream traversal still reaches the object.
+                self.advance()?; // '/'
+                let step = if self.match_token(&[Token::Star])? {
+                    "*".to_string()
+                } else if self.match_token(&[Token::StarStar])? {
+                    // `/**/<name>` — consume the following `/` and name pattern.
+                    self.consume(Token::Slash, "Expected '/' after '**'", Some("'/'"))?;
+                    self.parse_xml_name_pattern()?
+                } else {
+                    self.parse_xml_name_pattern()?
+                };
+                let span = expr.span().start..self.previous_span().end;
+                expr = Expr::FieldAccess {
+                    object: Box::new(expr),
+                    field: step,
+                    span,
+                };
+            } else if self.match_token(&[Token::RightArrowGt])? {
+                // Synchronous send action `expr ->> peer-worker`.
+                let peer = self.expect_ident("Expected worker name after '->>'")?;
+                let span = expr.span().start..self.previous_span().end;
+                expr = Expr::RemoteCall {
+                    object: Box::new(expr),
+                    method: peer,
+                    arguments: Vec::new(),
+                    span,
+                };
             } else if self.match_token(&[Token::RightArrow])? {
                 // Remote method call `client->method(args)` or client resource
                 // access `client->/path/segments[.accessor](args)`.
@@ -2054,6 +2204,34 @@ impl Parser {
         Ok(self.make_call_expr(callee, arguments, open_span, close_span))
     }
 
+    /// Parses an XML name pattern `<a>`, `<ns:a>`, `<a|b>`, or `<*>`, returning
+    /// its rendered text. Used by XML navigation steps.
+    fn parse_xml_name_pattern(&mut self) -> ParseResult<String> {
+        self.consume(Token::Lt, "Expected '<' in XML name pattern", Some("'<'"))?;
+        let mut parts = Vec::new();
+        loop {
+            if self.match_token(&[Token::Star])? {
+                parts.push("*".to_string());
+            } else {
+                let mut name = self.expect_ident("Expected name in XML name pattern")?;
+                if self.match_token(&[Token::Colon])? {
+                    let local = if self.match_token(&[Token::Star])? {
+                        "*".to_string()
+                    } else {
+                        self.expect_ident("Expected local name after ':'")?
+                    };
+                    name = format!("{name}:{local}");
+                }
+                parts.push(name);
+            }
+            if !self.match_token(&[Token::Pipe])? {
+                break;
+            }
+        }
+        self.consume_gt("Expected '>' after XML name pattern")?;
+        Ok(parts.join("|"))
+    }
+
     /// Parses a client resource-access path following `->`, e.g. `/tasks`,
     /// `/tasks/[id]`, or `/tasks.post`. Returns the resource accessor method name
     /// (defaulting to `get`). Path segments are consumed but not retained.
@@ -2062,7 +2240,8 @@ impl Parser {
             if matches!(self.peek(), Some(Token::Identifier(_))) {
                 self.advance()?; // path segment
             } else if self.match_token(&[Token::LBracket])? {
-                // Computed segment `[expr]`.
+                // Computed segment `[expr]` or rest segment `[...expr]`.
+                self.match_token(&[Token::DotDotDot])?;
                 let _ = self.expression()?;
                 self.consume(
                     Token::RBracket,
@@ -2513,6 +2692,21 @@ impl Parser {
         if self.check_ctx_kw("start") {
             return self.start_action();
         }
+        // Error constructor with an explicit type: `error SampleErr("msg")` and
+        // `error mod:T("msg")`. Rewritten to a call on the type name.
+        if matches!(self.peek(), Some(Token::Identifier(s)) if s == "error")
+            && matches!(self.peek_n(1), Some(Token::Identifier(_)))
+        {
+            self.advance()?; // 'error'
+            let start = self.previous_span().start;
+            let mut name = self.expect_ident("Expected error type name")?;
+            if self.match_token(&[Token::Colon])? {
+                let local = self.expect_ident("Expected type name after ':'")?;
+                name = format!("{name}:{local}");
+            }
+            let span = start..self.previous_span().end;
+            return Ok(Expr::Variable { name, span });
+        }
         // Qualified reference whose module name is a keyword, e.g.
         // `transaction:onCommit(..)`, `map:keys(..)`, `object:X`. Rewritten to a
         // plain variable so the postfix `:`/call machinery handles the rest.
@@ -2662,6 +2856,7 @@ impl Parser {
 
                 if !self.check(&Token::RBracket) {
                     loop {
+                        self.match_token(&[Token::DotDotDot])?; // spread member `...xs`
                         elements.push(self.expression()?);
                         if !self.match_token(&[Token::Comma])? {
                             break;
@@ -4714,6 +4909,72 @@ mod tests {
             var_type("int:Signed32 x = y;"),
             TypeDescriptor::Qualified { module, name } if module == "int" && name == "Signed32"
         ));
+    }
+
+    /// Coverage of the official Ballerina 2024R1 grammar.
+    ///
+    /// `tests/grammar-productions.tsv` maps every syntactic production in the
+    /// specification to a minimal snippet exercising it (or to the parent
+    /// production that structurally contains it). Every snippet must parse
+    /// without a grammar-level diagnostic.
+    ///
+    /// This is the machine-checkable form of the figure reported in
+    /// `docs/GRAMMAR_COVERAGE.md`.
+    #[test]
+    fn grammar_coverage_of_official_spec() {
+        let data = include_str!("../tests/grammar-productions.tsv");
+        let mut entries: Vec<(&str, &str)> = Vec::new();
+        for line in data.lines() {
+            if line.starts_with('#') || line.trim().is_empty() {
+                continue;
+            }
+            let (name, snip) = line.split_once('\t').expect("tab-separated row");
+            entries.push((name, snip));
+        }
+        assert_eq!(
+            entries.len(),
+            419,
+            "expected all 419 official syntactic productions to be mapped"
+        );
+
+        // Resolve `PARENT:` references to the snippet that exercises them.
+        let lookup = |mut key: &str| -> Option<String> {
+            for _ in 0..8 {
+                let v = entries.iter().find(|(n, _)| *n == key)?.1;
+                match v.strip_prefix("PARENT:") {
+                    Some(parent) => key = parent,
+                    None => return Some(v.replace("\\n", "\n")),
+                }
+            }
+            None
+        };
+
+        let mut failures = Vec::new();
+        for (name, _) in &entries {
+            let Some(src) = lookup(name) else {
+                failures.push(format!("{name}: unresolved PARENT chain"));
+                continue;
+            };
+            let tokens = match Lexer::new(&src).collect::<Result<Vec<_>, _>>() {
+                Ok(t) => t,
+                Err(e) => {
+                    failures.push(format!("{name}: lex error {e:?}"));
+                    continue;
+                }
+            };
+            let (_ast, diags) = Parser::new(tokens).parse();
+            if let Some(d) = diags.first() {
+                failures.push(format!("{name}: {}", d.message));
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "{} of {} official productions failed to parse:\n{}",
+            failures.len(),
+            entries.len(),
+            failures.join("\n")
+        );
     }
 
     #[test]

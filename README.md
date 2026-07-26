@@ -51,7 +51,7 @@ Followings are the benchmarks we achieved using the release version 0.3.0:
 
 ### Notes on Benchmark Context
 
-- **Grammar Coverage**: Blazelint parses **98% of the official "Ballerina by Example" corpus** without grammar errors (160/163 sampled files), covering type descriptors (records, objects, tuples, generics, unions/intersections), module-level declarations (`type`, `enum`, `class`, `service`, `configurable`), error handling (`check`/`checkpanic`/`trap`), closures and arrow functions, control flow (`match`, `do`/`on fail`, `lock`, `transaction`), query expressions, and client/worker actions. See [`docs/BNF.md`](docs/BNF.md) for the grammar. Reproduce with `bash scripts/grammar_coverage.sh`.
+- **Grammar Coverage**: Blazelint implements **all 419 syntactic productions** of the [Ballerina 2024R1 specification](https://ballerina.io/spec/lang/2024R1/), and parses **99% of the official "Ballerina by Example" corpus** (162/163 sampled files) without grammar errors. Full breakdown in [`docs/GRAMMAR_COVERAGE.md`](docs/GRAMMAR_COVERAGE.md); reproduce with `cargo test --lib grammar_coverage_of_official_spec` and `bash scripts/grammar_coverage.sh`.
 
 - **Validated against the official compiler**: `scripts/compare_with_ballerina.sh` runs the official Ballerina 2201.10.0 (Swan Lake, language spec 2024R1) compiler over the same corpus and compares verdicts. On the sampled files Blazelint produced **zero false positives** — it never rejected a program the official compiler accepts. The compiler does report errors Blazelint does not; those are cross-file/generated-symbol references and deep type-checking, both outside the scope of a single-file linter.
 
@@ -61,7 +61,9 @@ Followings are the benchmarks we achieved using the release version 0.3.0:
 
 ## Documentation
 
-*   [BNF Grammar for Ballerina Subset](docs/BNF.md)
+*   [Grammar Coverage vs. the official spec](docs/GRAMMAR_COVERAGE.md)
+*   [Grammar in spec EBNF notation](docs/EBNF.md)
+*   [Grammar in BNF notation](docs/BNF.md)
 * [Software Requirement Specification (SRS)](https://github.com/RuztyCrabs/Blazelint/releases/latest/download/BlazeLint-SRS.pdf)
 *   [Pipeline overview](docs/pipeline_overview.md)
 *   [Quick Reference](docs/QUICK_REFERENCE.md)
@@ -90,7 +92,7 @@ blazelint path/to/file.bal
 ```
 
 > [!NOTE]
-> Use the limited subset documented in the [BNF](docs/BNF.md) when defining Ballerina syntax to be linted.
+> The parser implements the full 2024R1 grammar ([BNF](docs/BNF.md) / [EBNF](docs/EBNF.md)). Semantic analysis is deliberately shallower — see [grammar coverage](docs/GRAMMAR_COVERAGE.md).
 
 The tool prints the detected diagnostics if there is any and exits with a non-zero status or exits with a zero status with no prints to stdout if the passed file is clean.
 
