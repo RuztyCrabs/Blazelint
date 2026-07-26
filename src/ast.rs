@@ -225,6 +225,8 @@ pub enum Expr {
     TableConstructor { rows: Vec<Expr>, span: Span },
     /// `start <function-call>` action expression.
     Start { call: Box<Expr>, span: Span },
+    /// Object-constructor expression: `[service|client] object { members }`.
+    ObjectConstructor { members: Vec<Stmt>, span: Span },
 }
 
 /// A clause within a query expression.
@@ -250,6 +252,8 @@ pub enum QueryClause {
     Limit(Expr),
     /// `select <expr>`.
     Select(Expr),
+    /// `do { ... }` query action clause.
+    Do(Vec<Stmt>),
     /// `group by ...` / `on conflict ...` — retained without detail.
     Other,
 }
@@ -294,7 +298,8 @@ impl Expr {
             | Expr::RemoteCall { span, .. }
             | Expr::Query { span, .. }
             | Expr::TableConstructor { span, .. }
-            | Expr::Start { span, .. } => span,
+            | Expr::Start { span, .. }
+            | Expr::ObjectConstructor { span, .. } => span,
         }
     }
 }
