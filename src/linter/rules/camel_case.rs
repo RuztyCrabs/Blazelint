@@ -87,9 +87,36 @@ fn check_and_enforce_camel_case(
                 check_and_enforce_camel_case(s, diagnostics, source, severity, line_tracker);
             }
         }
-        Stmt::Foreach { body, .. } => {
+        // Every remaining construct that carries a block: class and service
+        // members, match arms, do/on-fail, lock, transaction, retry, workers,
+        // and bare blocks.
+        Stmt::Foreach { body, .. }
+        | Stmt::Block { body, .. }
+        | Stmt::Lock { body, .. }
+        | Stmt::Transaction { body, .. }
+        | Stmt::Retry { body, .. }
+        | Stmt::Worker { body, .. } => {
             for s in body {
                 check_and_enforce_camel_case(s, diagnostics, source, severity, line_tracker);
+            }
+        }
+        Stmt::ClassDef { members, .. } | Stmt::ServiceDecl { members, .. } => {
+            for s in members {
+                check_and_enforce_camel_case(s, diagnostics, source, severity, line_tracker);
+            }
+        }
+        Stmt::DoOnFail {
+            body, on_fail_body, ..
+        } => {
+            for s in body.iter().chain(on_fail_body) {
+                check_and_enforce_camel_case(s, diagnostics, source, severity, line_tracker);
+            }
+        }
+        Stmt::Match { arms, .. } => {
+            for arm in arms {
+                for s in &arm.body {
+                    check_and_enforce_camel_case(s, diagnostics, source, severity, line_tracker);
+                }
             }
         }
         _ => {}

@@ -72,6 +72,79 @@ impl MissingReturnRule {
     }
 }
 
+impl MissingReturnRule {
+    /// Walks every construct that can contain a function definition, so methods
+    /// declared inside a class, service, or nested block are checked too.
+    fn check_functions(
+        &self,
+        stmts: &[Stmt],
+        severity: crate::errors::Severity,
+        line_tracker: &crate::utils::LineTracker,
+        out: &mut Vec<Diagnostic>,
+    ) {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Function {
+                    name,
+                    return_type,
+                    body,
+                    span,
+                    ..
+                } => {
+                    let requires_value = return_type.as_ref().is_some_and(|ty| !ty.is_nilable());
+                    if requires_value && !self.check_returns_in_block(body) {
+                        out.push(Diagnostic::new_tracked(
+                            DiagnosticKind::Linter,
+                            severity,
+                            format!(
+                                "Function '{}' might not return a value on all code paths.",
+                                name
+                            ),
+                            span.clone(),
+                            line_tracker,
+                        ));
+                    }
+                    self.check_functions(body, severity, line_tracker, out);
+                }
+                Stmt::ClassDef { members, .. } | Stmt::ServiceDecl { members, .. } => {
+                    self.check_functions(members, severity, line_tracker, out);
+                }
+                Stmt::If {
+                    then_branch,
+                    else_branch,
+                    ..
+                } => {
+                    self.check_functions(then_branch, severity, line_tracker, out);
+                    if let Some(e) = else_branch {
+                        self.check_functions(e, severity, line_tracker, out);
+                    }
+                }
+                Stmt::While { body, .. }
+                | Stmt::Foreach { body, .. }
+                | Stmt::Block { body, .. }
+                | Stmt::Lock { body, .. }
+                | Stmt::Transaction { body, .. }
+                | Stmt::Retry { body, .. }
+                | Stmt::Worker { body, .. } => {
+                    self.check_functions(body, severity, line_tracker, out);
+                }
+                Stmt::DoOnFail {
+                    body, on_fail_body, ..
+                } => {
+                    self.check_functions(body, severity, line_tracker, out);
+                    self.check_functions(on_fail_body, severity, line_tracker, out);
+                }
+                Stmt::Match { arms, .. } => {
+                    for arm in arms {
+                        self.check_functions(&arm.body, severity, line_tracker, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 impl LintRule for MissingReturnRule {
     fn name(&self) -> &'static str {
         "missing-return"
@@ -91,30 +164,7 @@ impl LintRule for MissingReturnRule {
     ) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
         let severity = self.severity(config);
-        for stmt in ast {
-            if let Stmt::Function {
-                name,
-                return_type,
-                body,
-                span,
-                ..
-            } = stmt
-            {
-                let requires_value = return_type.as_ref().is_some_and(|ty| !ty.is_nilable());
-                if requires_value && !self.check_returns_in_block(body) {
-                    diagnostics.push(Diagnostic::new_tracked(
-                        DiagnosticKind::Linter,
-                        severity,
-                        format!(
-                            "Function '{}' might not return a value on all code paths.",
-                            name
-                        ),
-                        span.clone(),
-                        line_tracker,
-                    ));
-                }
-            }
-        }
+        self.check_functions(ast, severity, line_tracker, &mut diagnostics);
         diagnostics
     }
 }

@@ -10,4 +10,4 @@ pub use constant_case::ConstantCaseRule;
 pub use line_length::LineLengthRule;
 pub use max_function_length::MaxFunctionLengthRule;
 pub use missing_return::MissingReturnRule;
-pub use unused_variables::UnusedVariablesRule;
+pub use unused_variables::{UnusedParametersRule, UnusedVariablesRule};
