@@ -164,12 +164,22 @@ Per phase:
 
 Tracked metric across the plan:
 
-| Milestone | Files diagnostic-free |
-|---|---|
-| Today | 99 / 163 (60%) |
-| After A | ~130 / 163 (~80%) |
-| After A–D | ~145 / 163 (~89%) |
-| After A–E | ≥155 / 163 (≥95%) |
+| Milestone | Files diagnostic-free | Actual |
+|---|---|---|
+| Start | 99 / 163 (60%) | — |
+| After A (named arguments) | ~130 (~80%) | 117 / 163 (71%) |
+| After B (class/service bodies) | — | 128 / 163 (78%) |
+| After C (symbol resolution) | — | 139 / 163 (85%) |
+| After D (equality, nilable) | ~145 (~89%) | 141 / 163 (86%) |
+| After E (params, traversal) | ≥155 (≥95%) | **149 / 163 (91%)** |
+
+Phases A–E are complete. Total diagnostics fell from 207 to 33, and
+false positives against the official compiler stayed at zero throughout.
+
+The 14 files still reporting were inspected individually and are
+dominated by true positives and by limits inherent to single-file
+analysis (calls to functions defined in another file of the same
+package). Phase F and the new rules in §3 remain optional.
 
 ## 5. Grammar note: `master` vs `2024R1`
 

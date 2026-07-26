@@ -51,7 +51,22 @@ impl MissingReturnRule {
                 }
                 true
             }
-            Stmt::Block { body, .. } => self.check_returns_in_block(body),
+            // A block that always returns satisfies the enclosing function,
+            // whether it is bare or wrapped in lock/transaction/retry.
+            Stmt::Block { body, .. }
+            | Stmt::Lock { body, .. }
+            | Stmt::Transaction { body, .. }
+            | Stmt::Retry { body, .. } => self.check_returns_in_block(body),
+            // `do { } on fail { }` returns only if both paths do.
+            Stmt::DoOnFail {
+                body,
+                on_fail_body,
+                on_fail_var,
+                ..
+            } => {
+                self.check_returns_in_block(body)
+                    && (on_fail_var.is_none() || self.check_returns_in_block(on_fail_body))
+            }
             Stmt::Match { arms, .. } => {
                 // A match returns on all paths only if it is exhaustive (has an
                 // unguarded catch-all arm) and every arm body returns.
