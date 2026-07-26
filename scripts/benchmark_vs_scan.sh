@@ -103,11 +103,18 @@ echo
 # A timing comparison is only meaningful if both tools actually did the work and
 # found the same things. Run each once, unsuppressed, and diff the findings
 # before any number is reported.
+# `bal` is a shell wrapper around a JVM, which need not die on the SIGTERM that
+# plain `timeout` sends. `-k` follows up with SIGKILL so every limit below is a
+# hard deadline and the benchmark cannot hang. A SIGKILLed child reports 137.
+KILL_GRACE="${KILL_GRACE:-10}"
+hard_timeout() { timeout -k "$KILL_GRACE" "$@"; }
+timed_out() { [ "$1" -eq 124 ] || [ "$1" -eq 137 ]; }
+
 run_or_die() { # label timeout cmd...
     local label="$1" limit="$2"; shift 2
     local out status
-    out=$(timeout "$limit" "$@" 2>&1); status=$?
-    if [ "$status" -eq 124 ]; then
+    out=$(hard_timeout "$limit" "$@" 2>&1); status=$?
+    if timed_out "$status"; then
         echo "$label timed out after ${limit}s" >&2; exit 1
     elif [ "$status" -ne 0 ]; then
         echo "$label failed (exit $status):" >&2; echo "$out" >&2; exit 1
@@ -149,14 +156,14 @@ median() { sort -n | awk '{a[NR]=$1} END {print (NR%2) ? a[(NR+1)/2] : (a[NR/2]+
 # Timed runs stay quiet for clean measurement, but a nonzero exit or a timeout
 # invalidates the sample rather than being recorded as a fast run.
 check_timed() { # label status
-    if [ "$2" -eq 124 ]; then echo "$1 timed out during timing run" >&2; exit 1
+    if timed_out "$2"; then echo "$1 timed out during timing run" >&2; exit 1
     elif [ "$2" -ne 0 ]; then echo "$1 failed during timing run (exit $2)" >&2; exit 1; fi
 }
 
 # JVM floor: what `bal` costs before doing any analysis at all.
 jvm_times=()
 for _ in $(seq 1 "$RUNS"); do
-    s=$(date +%s%N); (cd "$PKG" && timeout 300 "$BAL" version >/dev/null 2>&1); status=$?; e=$(date +%s%N)
+    s=$(date +%s%N); (cd "$PKG" && hard_timeout 300 "$BAL" version >/dev/null 2>&1); status=$?; e=$(date +%s%N)
     check_timed "bal version" "$status"
     jvm_times+=( $(( (e - s) / 1000000 )) )
 done
@@ -164,7 +171,7 @@ JVM=$(printf '%s\n' "${jvm_times[@]}" | median)
 
 scan_times=()
 for _ in $(seq 1 "$RUNS"); do
-    s=$(date +%s%N); (cd "$PKG" && timeout 900 "$BAL" scan >/dev/null 2>&1); status=$?; e=$(date +%s%N)
+    s=$(date +%s%N); (cd "$PKG" && hard_timeout 900 "$BAL" scan >/dev/null 2>&1); status=$?; e=$(date +%s%N)
     check_timed "bal scan" "$status"
     scan_times+=( $(( (e - s) / 1000000 )) )
 done
@@ -173,7 +180,7 @@ SCAN=$(printf '%s\n' "${scan_times[@]}" | median)
 blz_times=()
 for _ in $(seq 1 "$RUNS"); do
     s=$(date +%s%N)
-    (cd "$PKG" && for f in *.bal; do timeout 300 "$BLZ" "$f" >/dev/null 2>&1 || exit $?; done)
+    (cd "$PKG" && for f in *.bal; do hard_timeout 300 "$BLZ" "$f" >/dev/null 2>&1 || exit $?; done)
     status=$?
     e=$(date +%s%N)
     check_timed "blazelint" "$status"
