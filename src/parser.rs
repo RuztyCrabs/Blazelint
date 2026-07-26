@@ -356,6 +356,27 @@ impl Parser {
         Ok(())
     }
 
+    /// Looks ahead from `offset` past any further qualifier words to decide
+    /// whether the run ends in a `class` or `object` — i.e. whether words like
+    /// `readonly` and `distinct` are qualifying a class rather than starting a
+    /// type (`readonly & T`) or a type constructor (`distinct T`).
+    fn qualifies_a_class(&self, offset: usize) -> bool {
+        let mut i = offset;
+        for _ in 0..4 {
+            match self.peek_n(i) {
+                Some(Token::Class) | Some(Token::Object) => return true,
+                Some(Token::Isolated) => i += 1,
+                Some(Token::Identifier(s))
+                    if matches!(s.as_str(), "readonly" | "distinct" | "service" | "client") =>
+                {
+                    i += 1
+                }
+                _ => return false,
+            }
+        }
+        false
+    }
+
     /// Consumes any run of annotation attachments (`@tag`, `@mod:tag { ... }`),
     /// discarding them. Annotation values are mapping constructors and are skipped
     /// as balanced brace blocks.
@@ -395,17 +416,12 @@ impl Parser {
                 // annotation here rather than starting a constant declaration.
                 self.advance()?;
                 qualifiers.push("const".to_string());
-            } else if self.check_ctx_kw("readonly")
-                && matches!(self.peek_n(1), Some(Token::Class) | Some(Token::Object))
-            {
-                // `readonly class C` — a qualifier, unlike the `readonly` type or
-                // the `readonly & T` intersection.
+            } else if self.check_ctx_kw("readonly") && self.qualifies_a_class(1) {
+                // `readonly class C` / `readonly distinct class C` — a qualifier,
+                // unlike the `readonly` type or the `readonly & T` intersection.
                 self.advance()?;
                 qualifiers.push("readonly".to_string());
-            } else if self.check_ctx_kw("distinct")
-                && (matches!(self.peek_n(1), Some(Token::Class))
-                    || matches!(self.peek_n(1), Some(Token::Identifier(s)) if matches!(s.as_str(), "service" | "client")))
-            {
+            } else if self.check_ctx_kw("distinct") && self.qualifies_a_class(1) {
                 // `distinct` as a class qualifier (`distinct service class C`),
                 // not the `distinct T` type constructor used in type position.
                 self.advance()?;
@@ -3913,13 +3929,13 @@ impl Parser {
         }
         match self.peek() {
             Some(Token::Var) | Some(Token::Final) | Some(Token::Const) => true,
-            Some(Token::LBracket) => {
-                // Tuple-typed binding `[T1, T2][] name` vs an array-literal
-                // expression statement `[1, 2]...`: only the former is a type
-                // (possibly with array/optional suffixes) followed by an identifier.
-                self.skip_type(0)
-                    .is_some_and(|end| matches!(self.peek_n(end), Some(Token::Identifier(_))))
-            }
+            // `[T1, T2][] name` (tuple-typed binding) vs `[1, 2]...` (array
+            // literal), and `(int|string)[] name` (parenthesised union) vs
+            // `(expr)...` (grouping): only the former of each is a type
+            // followed by an identifier.
+            Some(Token::LBracket) | Some(Token::LParen) => self
+                .skip_type(0)
+                .is_some_and(|end| matches!(self.peek_n(end), Some(Token::Identifier(_)))),
             Some(token)
                 if Self::is_type_start(token)
                     || matches!(
