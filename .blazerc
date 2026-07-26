@@ -4,6 +4,9 @@ constant-case = "info"
 line-length = "warn"
 max-function-length = "warn"
 missing-return = "error"
+
+# Official bal scan rules
+avoid-checkpanic = "warn"
 unused-variables = "error"
 
 [settings]

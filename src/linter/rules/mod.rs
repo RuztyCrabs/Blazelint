@@ -1,10 +1,14 @@
+pub mod avoid_checkpanic;
 pub mod camel_case;
 pub mod constant_case;
 pub mod line_length;
 pub mod max_function_length;
 pub mod missing_return;
+#[cfg(test)]
+pub mod test_support;
 pub mod unused_variables;
 
+pub use avoid_checkpanic::AvoidCheckpanicRule;
 pub use camel_case::CamelCaseRule;
 pub use constant_case::ConstantCaseRule;
 pub use line_length::LineLengthRule;
