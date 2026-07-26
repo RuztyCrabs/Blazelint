@@ -4918,8 +4918,17 @@ mod tests {
     /// production that structurally contains it). Every snippet must parse
     /// without a grammar-level diagnostic.
     ///
-    /// This is the machine-checkable form of the figure reported in
-    /// `docs/GRAMMAR_COVERAGE.md`.
+    /// Scope of the guarantee, so the figure is not over-read:
+    /// - It asserts each construct is **accepted**, not that its AST is
+    ///   correctly shaped — a silent mis-parse would pass.
+    /// - 144 of the 419 productions are inherited via `PARENT:` rather than
+    ///   exercised by their own snippet.
+    /// - 28 productions are accepted as opaque balanced blocks (object *type*
+    ///   bodies, annotation declarations, `fork` bodies, tagged templates), so
+    ///   they would also accept malformed content.
+    ///
+    /// Hence `docs/GRAMMAR_COVERAGE.md` reports 391/419 (93%) as structured,
+    /// with 419/419 merely accepted.
     #[test]
     fn grammar_coverage_of_official_spec() {
         let data = include_str!("../tests/grammar-productions.tsv");
@@ -4974,6 +4983,37 @@ mod tests {
             failures.len(),
             entries.len(),
             failures.join("\n")
+        );
+    }
+
+    /// Locks in the structured/opaque boundary documented in
+    /// `docs/GRAMMAR_COVERAGE.md` §3.
+    ///
+    /// Bodies that are parsed into members must reject malformed content;
+    /// bodies that are deliberately consumed as opaque blocks accept it. If an
+    /// opaque body is ever given a real grammar, its line here should move up.
+    #[test]
+    fn structured_bodies_reject_malformed_members() {
+        let rejects = |src: &str| {
+            let tokens = Lexer::new(src)
+                .collect::<Result<Vec<_>, _>>()
+                .expect("lexes");
+            !Parser::new(tokens).parse().1.is_empty()
+        };
+
+        // Structured: these have a real member grammar.
+        assert!(rejects("type T record { return return; };"), "record body");
+        assert!(rejects("class C { return return; }"), "class body");
+        assert!(rejects("function f() { match v { => { } } }"), "match arm");
+
+        // Opaque by design (counted as unstructured in the 391/419 figure).
+        assert!(
+            !rejects("type T object { return return return };"),
+            "object type body is opaque"
+        );
+        assert!(
+            !rejects("function f() { fork { return 1 2 3 } }"),
+            "fork body is opaque"
         );
     }
 

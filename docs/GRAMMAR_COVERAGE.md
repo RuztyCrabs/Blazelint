@@ -14,15 +14,31 @@ estimated.
 
 | Measure | Result |
 |---|---|
-| **Syntactic productions implemented** | **419 / 419 (100%)** |
+| **Syntactic productions parsed into structured AST** | **391 / 419 (93%)** |
+| Syntactic productions *accepted* (incl. opaque blocks) | 419 / 419 (100%) |
 | Real-world files parsed without grammar errors | 162 / 163 (99%) |
 | False positives vs. the official compiler | **0** |
 | Files with *no* diagnostics of any kind | 99 / 163 (60%) |
 
-The last row is the honest counterweight: the **parser** is essentially
-complete, but the **semantic analyser** is deliberately shallow, so 40% of
-real-world files still draw a semantic or lint diagnostic. That is where the
-remaining work is — not in the grammar.
+Read those first two rows together. Every production in the specification is
+**accepted** — nothing in the grammar causes a parse error. But 28 of them are
+accepted as *opaque blocks* rather than decomposed into AST nodes (§3), so the
+honest implementation figure is **93%**, not 100%.
+
+The last row is the other counterweight: the **parser** is essentially complete,
+but the **semantic analyser** is deliberately shallow, so 40% of real-world
+files still draw a semantic or lint diagnostic. That is where the remaining work
+is — not in the grammar.
+
+### What the measurement does and does not prove
+
+- It proves each construct **parses without a grammar error**.
+- It does **not** verify AST shape. A silent mis-parse — accepted but structured
+  wrongly — would not be caught.
+- Of the 419 productions, **275 (65%) are exercised by their own snippet**; the
+  remaining **144 (34%) are inferred** from a parent construct that structurally
+  contains them (e.g. `required-param` is inferred from `function f(int a) { }`).
+  That inference is sound for true sub-parts but is weaker than direct testing.
 
 ## 2. How the official grammar was counted
 
@@ -32,7 +48,7 @@ result is meaningless:
 
 | Group | Count | Meaning | Blazelint |
 |---|---:|---|---|
-| **Syntactic** | 419 | The parser grammar proper | **419 implemented (100%)** |
+| **Syntactic** | 419 | The parser grammar proper | **391 structured (93%)**, 28 opaque |
 | Lexical | 63 | Character classes, escapes, number/string forms | Handled by the lexer, not as productions |
 | Regex sub-grammar | 36 | The mini-language inside `` re `…` `` | Captured verbatim, not decomposed |
 | Documentation | 6 | Markdown doc-comment internals | Skipped as comments |
@@ -41,21 +57,37 @@ Counting all 524 as "the grammar" would understate coverage, because 105 of them
 are lexical/regex/doc productions that a linter has no reason to decompose.
 Counting only the 419 syntactic productions is the meaningful comparison.
 
-## 3. Deliberate non-goals
+## 3. The 28 opaque productions
 
-Three sub-grammars are accepted but not decomposed into an AST, because no lint
-rule inspects their internals:
+Four sub-grammars are **accepted but not decomposed**, because no current lint
+rule inspects their internals. They parse, but the parser does not implement
+their grammar — it consumes a balanced block. Consequently they also accept
+malformed input:
 
-1. **Regular expressions** (36 productions) — `` re `[a-z]+` `` is captured as a
-   template. Validating regex syntax is a separate concern.
-2. **Object *type* bodies** — `object { … }` in type position is consumed as a
-   balanced block. Object *constructors* and `class` bodies **are** parsed into
-   members, so methods are analysed.
-3. **`fork` bodies** and annotation attach-point lists — consumed as balanced
-   blocks.
+| Sub-grammar | Productions | Accepts, though invalid |
+|---|---:|---|
+| Object **type** bodies | 15 | `type T object { return return return };` |
+| Annotation declarations | 8 | `annotation A on on on ;` |
+| `fork` bodies | 1 | `fork { return 1 2 3 }` |
+| Tagged templates (regex) | 4 | ``re `((((` `` |
 
-These are design decisions, not gaps: the constructs parse, they just do not
-produce structured nodes.
+Full list: `annot-attach-point`, `annot-attach-points`, `annot-tag`,
+`annotation-decl`, `data-tag`, `dual-attach-point`, `dual-attach-point-ident`,
+`fork-stmt`, `method-decl`, `method-name`, `method-quals`,
+`object-field-descriptor`, `object-member-descriptor`, `object-network-qual`,
+`object-type-descriptor`, `object-type-quals`, `remote-method-decl`,
+`remote-method-name`, `remote-method-quals`, `remote-qual`,
+`resource-method-decl`, `resource-method-name`, `resource-method-quals`,
+`resource-path`, `resource-qual`, `source-only-attach-point`,
+`source-only-attach-point-ident`, `tagged-data-template-expr`.
+
+These are design decisions rather than defects — but they should not be counted
+as implemented, which is why the headline figure is 391/419.
+
+**Note the boundary**: object *type* bodies are opaque, but object
+**constructors** (`object { … }` in expression position) and `class` bodies
+**are** parsed into members, so methods there are analysed. Equivalently,
+`record`, `class`, and `match` bodies all correctly *reject* malformed members.
 
 ## 4. Reproducing the measurements
 
@@ -76,7 +108,8 @@ bash scripts/compare_with_ballerina.sh 60
 
 ## 5. Coverage by area
 
-Every area below is at 100% of its syntactic productions.
+Production counts are those *accepted*; the opaque ones from §3 fall mainly in
+"Type descriptors" (object type bodies) and "Module declarations" (annotations).
 
 | Area | Productions | Notes |
 |---|---:|---|
@@ -105,5 +138,11 @@ by reading the spec:
   and comparison harnesses need network access on first run.
 - One corpus file still fails to parse: `natural-expressions`, which uses the
   recent AI `natural { … }` expression block.
+- 28 productions are accepted as opaque blocks and would not reject malformed
+  input (§3).
+- 144 of 419 productions are inferred from a parent construct rather than
+  exercised directly (§1).
+- The coverage test asserts *no parse error*, not AST correctness; a silent
+  mis-parse would not be detected.
 - Per-production coverage proves each construct **parses**. It does not claim
   the resulting AST is semantically analysed — see the 60% figure in §1.
