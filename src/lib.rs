@@ -15,7 +15,7 @@ use lexer::Lexer;
 use linter::registry::LintRuleRegistry;
 use linter::rules::{
     AvoidCheckpanicRule, CamelCaseRule, ConstantCaseRule, LineLengthRule, MaxFunctionLengthRule,
-    MissingReturnRule, UnusedParametersRule, UnusedVariablesRule,
+    MissingReturnRule, SelfAssignmentRule, UnusedParametersRule, UnusedVariablesRule,
 };
 use parser::Parser;
 use semantic::analyze;
@@ -71,6 +71,7 @@ pub fn run() {
         registry.register(Box::new(UnusedVariablesRule));
         registry.register(Box::new(UnusedParametersRule));
         registry.register(Box::new(AvoidCheckpanicRule));
+        registry.register(Box::new(SelfAssignmentRule));
         registry
     };
 

@@ -4,6 +4,7 @@ pub mod constant_case;
 pub mod line_length;
 pub mod max_function_length;
 pub mod missing_return;
+pub mod self_assignment;
 #[cfg(test)]
 pub mod test_support;
 pub mod unused_variables;
@@ -14,4 +15,5 @@ pub use constant_case::ConstantCaseRule;
 pub use line_length::LineLengthRule;
 pub use max_function_length::MaxFunctionLengthRule;
 pub use missing_return::MissingReturnRule;
+pub use self_assignment::SelfAssignmentRule;
 pub use unused_variables::{UnusedParametersRule, UnusedVariablesRule};
