@@ -19,6 +19,9 @@ pub struct Parser {
     /// True while parsing the type on the right of an `is` operator, where a
     /// trailing `?` may be a ternary rather than an optional-type suffix.
     in_is_type: bool,
+    /// True while parsing the true-branch of a ternary, where a following `:`
+    /// terminates the branch rather than forming a qualified reference.
+    in_ternary_branch: bool,
 }
 
 impl Parser {
@@ -29,6 +32,7 @@ impl Parser {
             current: 0,
             errors: Vec::new(),
             in_is_type: false,
+            in_ternary_branch: false,
         }
     }
 
@@ -57,7 +61,9 @@ impl Parser {
     /// statement boundary. This allows the parser to recover and continue
     /// finding more errors instead of stopping at the first one.
     fn synchronize(&mut self) {
-        self.in_is_type = false; // reset transient parse state on recovery
+        // Reset transient parse state on recovery.
+        self.in_is_type = false;
+        self.in_ternary_branch = false;
         while !self.is_at_end() {
             // If we just passed a semicolon, we're at a statement boundary
             if matches!(self.previous(), Some(Token::Semicolon)) {
@@ -483,10 +489,28 @@ impl Parser {
             Some(Token::If) => self.if_statement(),
             Some(Token::While) => self.while_statement(),
             Some(Token::Foreach) => self.foreach_statement(),
+            // A query expression may stand alone as a statement (e.g. a
+            // `from ... do { ... }` query action).
+            _ if self.check_ctx_kw("from") => {
+                let expr = self.expression()?;
+                let start = expr.span().start;
+                // A query-action statement needs no trailing `;` when it ends in a
+                // `do { }` block, but one is allowed.
+                self.match_token(&[Token::Semicolon])?;
+                let end = self.previous_span().end;
+                Ok(Stmt::Expression {
+                    expression: expr,
+                    span: start..end.max(start),
+                })
+            }
             Some(Token::Match) => self.match_statement(),
             Some(Token::Lock) => self.lock_statement(),
             Some(Token::Do) => self.do_statement(),
-            Some(Token::Transaction) => self.transaction_statement(),
+            // `transaction {` is a statement; `transaction:` is a qualified
+            // reference into the transaction lang library.
+            Some(Token::Transaction) if !matches!(self.peek_n(1), Some(Token::Colon)) => {
+                self.transaction_statement()
+            }
             Some(Token::Retry) => self.retry_statement(),
             Some(Token::Fork) => self.fork_statement(),
             Some(Token::Worker) => self.worker_statement(),
@@ -1544,7 +1568,10 @@ impl Parser {
         } else if self.match_token(&[Token::Question])? {
             // Ternary operator: condition ? true_expr : false_expr
             let span_start = expr.span().start;
+            let was_in_branch = self.in_ternary_branch;
+            self.in_ternary_branch = true;
             let true_expr = self.expression()?;
+            self.in_ternary_branch = was_in_branch;
             self.consume(
                 Token::Colon,
                 "Expected ':' in ternary expression",
@@ -1928,7 +1955,7 @@ impl Parser {
                     member: Box::new(index),
                     span,
                 };
-            } else if self.check(&Token::Colon) {
+            } else if self.check(&Token::Colon) && !self.in_ternary_branch {
                 // Check if this is a qualified call: module:function(...)
                 // Only parse as qualified call if we have identifier:identifier pattern
                 if let Expr::Variable { .. } = expr {
@@ -2008,6 +2035,10 @@ impl Parser {
     /// Collects zero or more arguments after the opening parenthesis of a call.
     fn finish_call(&mut self, callee: Expr, open_span: Span) -> ParseResult<Expr> {
         let mut arguments = Vec::new();
+        // Inside parentheses a `:` is unambiguous, so qualified references are
+        // allowed again even within a ternary branch.
+        let was_in_branch = self.in_ternary_branch;
+        self.in_ternary_branch = false;
         if !self.check(&Token::RParen) {
             loop {
                 self.match_token(&[Token::DotDotDot])?; // spread argument `...expr`
@@ -2018,6 +2049,7 @@ impl Parser {
             }
         }
         self.consume(Token::RParen, "Expected ')' after arguments", Some("')'"))?;
+        self.in_ternary_branch = was_in_branch;
         let close_span = self.previous_span();
         Ok(self.make_call_expr(callee, arguments, open_span, close_span))
     }
@@ -2432,7 +2464,12 @@ impl Parser {
                 }
             }
         }
-        if self.check(&Token::Function) && matches!(self.peek_n(1), Some(Token::LParen)) {
+        if (self.check(&Token::Function) && matches!(self.peek_n(1), Some(Token::LParen)))
+            || (self.check(&Token::Isolated)
+                && matches!(self.peek_n(1), Some(Token::Function))
+                && matches!(self.peek_n(2), Some(Token::LParen)))
+        {
+            self.match_token(&[Token::Isolated])?; // optional `isolated` qualifier
             return self.anonymous_function();
         }
         // Typed template literal: `string \`...\``, `xml \`...\``, `re \`...\``, or
@@ -2475,6 +2512,30 @@ impl Parser {
         // `start` action expression.
         if self.check_ctx_kw("start") {
             return self.start_action();
+        }
+        // Qualified reference whose module name is a keyword, e.g.
+        // `transaction:onCommit(..)`, `map:keys(..)`, `object:X`. Rewritten to a
+        // plain variable so the postfix `:`/call machinery handles the rest.
+        if matches!(
+            self.peek(),
+            Some(Token::Transaction)
+                | Some(Token::Map)
+                | Some(Token::Object)
+                | Some(Token::Function)
+                | Some(Token::Type)
+        ) && matches!(self.peek_n(1), Some(Token::Colon))
+        {
+            let name = match self.advance_owned()? {
+                Token::Transaction => "transaction",
+                Token::Map => "map",
+                Token::Object => "object",
+                Token::Function => "function",
+                Token::Type => "type",
+                _ => unreachable!(),
+            }
+            .to_string();
+            let span = self.previous_span();
+            return Ok(Expr::Variable { name, span });
         }
         // Object constructor expression: `[service|client|isolated] object [:T] {..}`.
         if self.check(&Token::Object)
@@ -2532,8 +2593,12 @@ impl Parser {
                         self.make_literal_expr(Literal::Nil, open_span.start..close_span.end)
                     );
                 }
+                // Inside parentheses a `:` is unambiguous (see `finish_call`).
+                let was_in_branch = self.in_ternary_branch;
+                self.in_ternary_branch = false;
                 let expr = self.expression()?;
                 self.consume(Token::RParen, "Expected ')' after expression", Some("')'"))?;
+                self.in_ternary_branch = was_in_branch;
                 let close_span = self.previous_span();
                 Ok(self.make_grouping_expr(open_span, expr, close_span))
             }
@@ -2848,7 +2913,11 @@ impl Parser {
         // e.g. `object:RawTemplate`, `map:Entry`, `function:Type`.
         if matches!(
             self.peek(),
-            Some(Token::Object) | Some(Token::Map) | Some(Token::Function) | Some(Token::Type)
+            Some(Token::Object)
+                | Some(Token::Map)
+                | Some(Token::Function)
+                | Some(Token::Type)
+                | Some(Token::Transaction)
         ) && matches!(self.peek_n(1), Some(Token::Colon))
         {
             let module = match self.advance_owned()? {
@@ -2856,6 +2925,7 @@ impl Parser {
                 Token::Map => "map",
                 Token::Function => "function",
                 Token::Type => "type",
+                Token::Transaction => "transaction",
                 _ => unreachable!(),
             }
             .to_string();
@@ -3516,6 +3586,10 @@ impl Parser {
     /// reference LALR grammar handles with a table (e.g. `a < b;` comparison vs
     /// `Stream<int> s;` typed binding).
     fn starts_var_decl(&self) -> bool {
+        // A leading `from` opens a query expression, not a `<type> <name>` binding.
+        if self.check_ctx_kw("from") {
+            return false;
+        }
         match self.peek() {
             Some(Token::Var) | Some(Token::Final) | Some(Token::Const) => true,
             Some(Token::LBracket) => {
@@ -4639,6 +4713,102 @@ mod tests {
         assert!(matches!(
             var_type("int:Signed32 x = y;"),
             TypeDescriptor::Qualified { module, name } if module == "int" && name == "Signed32"
+        ));
+    }
+
+    #[test]
+    fn parses_strict_equality_operators() {
+        assert!(matches!(
+            var_init("boolean b = a === c;"),
+            Expr::Binary {
+                op: BinaryOp::EqualEqualEqual,
+                ..
+            }
+        ));
+        assert!(matches!(
+            var_init("boolean b = a !== c;"),
+            Expr::Binary {
+                op: BinaryOp::NotEqualEqual,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_hex_and_suffixed_numbers() {
+        assert!(matches!(
+            var_init("int n = 0xFF;"),
+            Expr::Literal {
+                value: Literal::Number(n),
+                ..
+            } if n == 255.0
+        ));
+        assert!(matches!(
+            var_init("decimal d = 12.5d;"),
+            Expr::Literal { .. }
+        ));
+    }
+
+    #[test]
+    fn parses_query_do_action_statement() {
+        let body = fn_body("function f() { from int i in xs do { g(i); }; }");
+        assert!(matches!(
+            &body[0],
+            Stmt::Expression {
+                expression: Expr::Query { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_destructuring_foreach() {
+        let body = fn_body("function f() { foreach [string, int] [name, grade] in rows { } }");
+        assert!(matches!(
+            &body[0],
+            Stmt::Foreach { variable, extra_bindings, .. }
+                if variable == "name" && extra_bindings == &vec!["grade".to_string()]
+        ));
+    }
+
+    #[test]
+    fn ternary_branch_does_not_swallow_qualified_colon() {
+        // `m is string ? m : log:eval(m)` — the `:` ends the true branch.
+        assert!(matches!(
+            var_init("string s = m is string ? m : log:eval(m);"),
+            Expr::Ternary { .. }
+        ));
+    }
+
+    #[test]
+    fn parses_keyword_qualified_references() {
+        // `transaction:Info` as a type and `transaction:onCommit(..)` as a call.
+        let stmts = parse_ok("function f(transaction:Info info) { transaction:onCommit(h); }");
+        let Stmt::Function { params, body, .. } = &stmts[0] else {
+            panic!("expected function")
+        };
+        assert!(matches!(
+            &params[0].1,
+            TypeDescriptor::Qualified { module, .. } if module == "transaction"
+        ));
+        assert!(matches!(
+            &body[0],
+            Stmt::Expression {
+                expression: Expr::Call { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_xml_step_and_multi_key_access() {
+        assert!(matches!(
+            var_init("xml items = doc.<items>;"),
+            Expr::FieldAccess { field, .. } if field == "items"
+        ));
+        assert!(matches!(
+            var_init("var e = employees[\"John\", \"Bloggs\"];"),
+            Expr::MemberAccess { .. }
         ));
     }
 
