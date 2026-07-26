@@ -155,6 +155,8 @@ impl Default for Config {
         rules.insert("missing-return".to_string(), RuleSeverity::Error);
         // Official scan rule ballerina:1.
         rules.insert("avoid-checkpanic".to_string(), RuleSeverity::Warn);
+        // Official scan rule ballerina:10.
+        rules.insert("self-assignment".to_string(), RuleSeverity::Warn);
         rules.insert("max-function-length".to_string(), RuleSeverity::Warn);
 
         Self {
