@@ -186,12 +186,21 @@ impl Parser {
                 }
             }
         }
-        // Typed mapping destructure `<name> {a, b} = ...`.
-        if matches!(self.peek(), Some(Token::Identifier(_))) {
-            if let Some(end) = self.skip_type(0) {
-                if matches!(self.peek_n(end), Some(Token::LBrace)) {
-                    return true;
+        // Typed destructure `<type> {a, b} = ...` or `<type> [a, ...r] = ...`.
+        if let Some(end) = self.skip_type(0) {
+            match self.peek_n(end) {
+                Some(Token::LBrace) => return true,
+                // `[a, b] = ...` is a binding list; `s["key"] = ...` is an index
+                // assignment. Only the former holds names and `...` separators.
+                Some(Token::LBracket) if self.bracket_is_binding_list(end) => {
+                    if let Some(close) = self.scan_balanced(end, &Token::LBracket, &Token::RBracket)
+                    {
+                        if matches!(self.peek_n(close), Some(Token::Eq)) {
+                            return true;
+                        }
+                    }
                 }
+                _ => {}
             }
         }
         // Error binding pattern: `error(msg) = e;`, `var error(m) = e;`, or
@@ -229,8 +238,16 @@ impl Parser {
         }
         let is_error_pattern = matches!(self.peek(), Some(Token::Identifier(s)) if s == "error")
             && matches!(self.peek_n(1), Some(Token::LParen));
-        // Optional leading type (`Rec {x, y} = ...`).
-        if !is_error_pattern && !self.check(&Token::LBrace) && !self.check(&Token::LBracket) {
+        // Optional leading type. It may itself begin with `[` or `{` (a tuple or
+        // record type, as in `[int, string] [a, b] = t`), so the binding pattern
+        // is whatever follows the type rather than the first bracket seen.
+        let type_precedes_binding = self
+            .skip_type(0)
+            .is_some_and(|end| matches!(self.peek_n(end), Some(Token::LBrace | Token::LBracket)));
+        if !is_error_pattern
+            && (type_precedes_binding
+                || (!self.check(&Token::LBrace) && !self.check(&Token::LBracket)))
+        {
             let _ = self.parse_type_descriptor()?;
         }
         let mut names = Vec::new();
@@ -1841,7 +1858,11 @@ impl Parser {
         let mut expr = self.shift()?;
 
         loop {
-            // `e is T` type-test: the right-hand side is a type descriptor.
+            // `e is T` / `e !is T` type-test: the right-hand side is a type.
+            let negated = self.check(&Token::Bang) && matches!(self.peek_n(1), Some(Token::Is));
+            if negated {
+                self.advance()?; // '!'
+            }
             if self.match_token(&[Token::Is])? {
                 let start = expr.span().start;
                 let was_in_is = self.in_is_type;
@@ -1852,6 +1873,7 @@ impl Parser {
                 expr = Expr::TypeTest {
                     expr: Box::new(expr),
                     ty,
+                    negated,
                     span: start..end,
                 };
                 continue;
@@ -4074,7 +4096,9 @@ impl Parser {
         // Suffixes: array `[...]`, optional `?`, union `|T`, intersection `&T`.
         loop {
             match self.peek_n(offset) {
-                Some(Token::LBracket) => {
+                // Only a genuine array dimension is a suffix; `int[] [a, b] = t`
+                // has a *binding pattern* after the type, not a second dimension.
+                Some(Token::LBracket) if self.bracket_is_dimension(offset) => {
                     offset = self.scan_balanced(offset, &Token::LBracket, &Token::RBracket)?;
                 }
                 Some(Token::Question) => offset += 1,
@@ -4085,6 +4109,38 @@ impl Parser {
             }
         }
         Some(offset)
+    }
+
+    /// Returns true when the `[` at `offset` holds a list *binding pattern* —
+    /// only names, `...` rest markers, `var`, and commas. An index expression
+    /// (`s["key"]`, `a[i + 1]`) contains other tokens and is excluded.
+    fn bracket_is_binding_list(&self, offset: usize) -> bool {
+        let mut i = offset + 1;
+        let mut saw_name = false;
+        loop {
+            match self.peek_n(i) {
+                Some(Token::RBracket) => return saw_name,
+                Some(Token::Identifier(_)) => {
+                    saw_name = true;
+                    i += 1;
+                }
+                Some(Token::Comma) | Some(Token::DotDotDot) | Some(Token::Var) => i += 1,
+                _ => return false,
+            }
+        }
+    }
+
+    /// Returns true when the `[` at `offset` holds an array dimension — `[]`,
+    /// `[3]`, `[*]`, or `[CONST]` — rather than a binding pattern such as
+    /// `[a, b]` or `[...rest]`.
+    fn bracket_is_dimension(&self, offset: usize) -> bool {
+        match self.peek_n(offset + 1) {
+            Some(Token::RBracket) | Some(Token::Star) => true,
+            Some(Token::Number(_)) | Some(Token::Identifier(_)) => {
+                matches!(self.peek_n(offset + 2), Some(Token::RBracket))
+            }
+            _ => false,
+        }
     }
 
     /// Lookahead helper: assuming `peek_n(start)` is `<`, returns the offset just

@@ -209,10 +209,11 @@ pub enum Expr {
         interpolations: Vec<Expr>,
         span: Span,
     },
-    /// Type-test expression: `e is T`.
+    /// Type-test expression: `e is T`, or `e !is T` when `negated`.
     TypeTest {
         expr: Box<Expr>,
         ty: TypeDescriptor,
+        negated: bool,
         span: Span,
     },
     /// Let expression: `let <bindings> in <body>`.
