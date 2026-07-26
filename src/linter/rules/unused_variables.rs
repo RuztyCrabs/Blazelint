@@ -185,6 +185,7 @@ impl<'a> UnusedVariableVisitor<'a> {
             }
             Stmt::Foreach {
                 variable,
+                extra_bindings,
                 iterable,
                 body,
                 span,
@@ -193,6 +194,9 @@ impl<'a> UnusedVariableVisitor<'a> {
                 self.visit_expr(iterable);
                 self.enter_scope();
                 self.declare_variable(variable.clone(), span.clone());
+                for name in extra_bindings {
+                    self.declare_variable(name.clone(), span.clone());
+                }
                 self.visit_stmts(body);
                 self.exit_scope();
             }

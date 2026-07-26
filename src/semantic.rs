@@ -316,6 +316,7 @@ impl Analyzer {
             Stmt::Foreach {
                 type_annotation,
                 variable,
+                extra_bindings,
                 iterable,
                 body,
                 span: _,
@@ -341,6 +342,19 @@ impl Analyzer {
                             declared_span: iterable.span().clone(),
                         },
                     );
+                    // Additional names bound by a destructuring foreach pattern.
+                    for name in extra_bindings {
+                        analyzer.current_scope_mut().insert(
+                            name.clone(),
+                            Symbol {
+                                ty: Type::Unknown("foreach_var".to_string()),
+                                is_final: true,
+                                is_const: false,
+                                initialized: true,
+                                declared_span: iterable.span().clone(),
+                            },
+                        );
+                    }
 
                     for stmt in body {
                         analyzer.check_stmt(stmt);

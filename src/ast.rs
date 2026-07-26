@@ -413,10 +413,13 @@ pub enum Stmt {
         body: Vec<Stmt>,
         span: Span,
     },
-    /// A foreach loop statement.
+    /// A foreach loop statement. `variable` is the primary binding; a
+    /// destructuring binding (`foreach [T,U] [a, b] in ...`) additionally
+    /// populates `extra_bindings` with the remaining bound names.
     Foreach {
         type_annotation: Option<TypeDescriptor>,
         variable: String,
+        extra_bindings: Vec<String>,
         iterable: Expr,
         body: Vec<Stmt>,
         span: Span,

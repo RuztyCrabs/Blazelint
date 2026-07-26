@@ -99,9 +99,13 @@ impl Parser {
         }
 
         // Contextual module-level declarations keyed by a leading identifier.
+        // `service` is only a service declaration when not acting as a qualifier
+        // (as in `service class C` / `distinct service object { }`).
         if let Some(Token::Identifier(word)) = self.peek() {
             match word.as_str() {
-                "service" => return self.service_declaration(),
+                "service" if !matches!(self.peek_n(1), Some(Token::Class | Token::Object)) => {
+                    return self.service_declaration()
+                }
                 "listener" => return self.listener_declaration(),
                 "annotation" => return self.annotation_declaration(),
                 _ => {}
@@ -300,7 +304,21 @@ impl Parser {
                 qualifiers.push("public".to_string());
             } else if self.match_token(&[Token::Isolated])? {
                 qualifiers.push("isolated".to_string());
-            } else if self.check_ctx_kw("transactional") || self.check_ctx_kw("client") {
+            } else if self.check_ctx_kw("distinct")
+                && (matches!(self.peek_n(1), Some(Token::Class))
+                    || matches!(self.peek_n(1), Some(Token::Identifier(s)) if matches!(s.as_str(), "service" | "client")))
+            {
+                // `distinct` as a class qualifier (`distinct service class C`),
+                // not the `distinct T` type constructor used in type position.
+                self.advance()?;
+                qualifiers.push("distinct".to_string());
+            } else if matches!(
+                self.peek(),
+                Some(Token::Identifier(s)) if matches!(s.as_str(), "transactional" | "client" | "service")
+            ) && !matches!(self.peek_n(1), Some(Token::Slash))
+            {
+                // `service` here is a class qualifier (`distinct service class C`),
+                // not a service declaration (`service /path on ...`).
                 if let Token::Identifier(s) = self.advance_owned()? {
                     qualifiers.push(s);
                 }
@@ -631,16 +649,22 @@ impl Parser {
             Some(self.parse_type_descriptor()?)
         };
 
-        // Parse variable name
-        let var_token = self.advance_owned()?;
-        let variable = match var_token {
-            Token::Identifier(name) => name,
-            _ => {
-                return Err(
-                    self.error_previous("Expected variable name in foreach", Some("identifier"))
+        // The binding is either a simple name or a destructuring pattern
+        // (`foreach [string, int] [name, grade] in ...`).
+        let (variable, extra_bindings) =
+            if self.check(&Token::LBracket) || self.check(&Token::LBrace) {
+                let mut names = Vec::new();
+                let mut spans = Vec::new();
+                self.parse_binding_pattern(&mut names, &mut spans)?;
+                let mut iter = names.into_iter();
+                let first = iter.next().unwrap_or_default();
+                (first, iter.collect())
+            } else {
+                (
+                    self.expect_ident("Expected variable name in foreach")?,
+                    Vec::new(),
                 )
-            }
-        };
+            };
 
         self.consume(
             Token::In,
@@ -659,6 +683,7 @@ impl Parser {
         Ok(Stmt::Foreach {
             type_annotation,
             variable,
+            extra_bindings,
             iterable,
             body,
             span: foreach_span.start..span_end,
@@ -1814,6 +1839,15 @@ impl Parser {
                 self.consume(Token::Dot, "Expected '.'", Some("'.'"))?;
                 let method_name = if self.match_token(&[Token::At])? {
                     self.expect_ident("Expected annotation name after '.@'")?
+                } else if self.match_token(&[Token::Lt])? {
+                    // XML step expression `x.<name>` / `x.<ns:name>`.
+                    let mut name = self.expect_ident("Expected element name in '.<...>'")?;
+                    if self.match_token(&[Token::Colon])? {
+                        let local = self.expect_ident("Expected local name after ':'")?;
+                        name = format!("{name}:{local}");
+                    }
+                    self.consume_gt("Expected '>' after XML step name")?;
+                    name
                 } else {
                     self.expect_ident("Expected method or field name after '.'")?
                 };
@@ -1823,6 +1857,7 @@ impl Parser {
                     let mut arguments = Vec::new();
                     if !self.check(&Token::RParen) {
                         loop {
+                            self.match_token(&[Token::DotDotDot])?; // spread argument
                             arguments.push(self.expression()?);
                             if !self.match_token(&[Token::Comma])? {
                                 break;
@@ -1861,6 +1896,7 @@ impl Parser {
                 if self.match_token(&[Token::LParen])? {
                     if !self.check(&Token::RParen) {
                         loop {
+                            self.match_token(&[Token::DotDotDot])?; // spread argument
                             arguments.push(self.expression()?);
                             if !self.match_token(&[Token::Comma])? {
                                 break;
@@ -1927,6 +1963,7 @@ impl Parser {
                             let mut arguments = Vec::new();
                             if !self.check(&Token::RParen) {
                                 loop {
+                                    self.match_token(&[Token::DotDotDot])?; // spread argument
                                     arguments.push(self.expression()?);
                                     if !self.match_token(&[Token::Comma])? {
                                         break;
@@ -2521,6 +2558,7 @@ impl Parser {
                 if self.match_token(&[Token::LParen])? {
                     if !self.check(&Token::RParen) {
                         loop {
+                            self.match_token(&[Token::DotDotDot])?; // spread argument
                             arguments.push(self.expression()?);
                             if !self.match_token(&[Token::Comma])? {
                                 break;
@@ -2683,6 +2721,11 @@ impl Parser {
     fn parse_type_postfix(&mut self) -> ParseResult<TypeDescriptor> {
         let mut type_desc = self.parse_type_primary()?;
         loop {
+            // A following `[` is an array suffix only if it holds an array
+            // dimension; `[a, b]` after a type is a binding pattern, not a suffix.
+            if self.check(&Token::LBracket) && self.bracket_is_binding_pattern() {
+                break;
+            }
             if self.match_token(&[Token::LBracket])? {
                 let dimension = if self.check(&Token::RBracket) {
                     Some(ArrayDimension::Open)
@@ -2718,6 +2761,23 @@ impl Parser {
             }
         }
         Ok(type_desc)
+    }
+
+    /// Returns true when the `[` at the cursor opens a binding pattern rather
+    /// than an array-dimension suffix. An array suffix is empty (`[]`), or holds
+    /// a single dimension (`[3]`, `[*]`, `[CONST]`); anything else — notably a
+    /// comma-separated list like `[name, grade]` — is a binding pattern.
+    fn bracket_is_binding_pattern(&self) -> bool {
+        match self.peek_n(1) {
+            Some(Token::RBracket) | Some(Token::Star) | Some(Token::Number(_)) => false,
+            Some(Token::Identifier(_)) => {
+                // `[CONST]` is a dimension; `[a, b]` / `[a]` followed by `in` is a
+                // binding pattern.
+                !matches!(self.peek_n(2), Some(Token::RBracket))
+                    || matches!(self.peek_n(3), Some(Token::In))
+            }
+            _ => true,
+        }
     }
 
     /// Heuristic used inside type parsing to tell an optional-type suffix `T?`
@@ -2779,8 +2839,29 @@ impl Parser {
         if self.check(&Token::Record) {
             return self.parse_record_type();
         }
-        if self.check(&Token::Object) {
+        // `object { .. }` inline type, but `object:Name` is a qualified reference
+        // to a type in the `object` lang library.
+        if self.check(&Token::Object) && !matches!(self.peek_n(1), Some(Token::Colon)) {
             return self.parse_object_type();
+        }
+        // Lang-library qualified references where the module name is a keyword,
+        // e.g. `object:RawTemplate`, `map:Entry`, `function:Type`.
+        if matches!(
+            self.peek(),
+            Some(Token::Object) | Some(Token::Map) | Some(Token::Function) | Some(Token::Type)
+        ) && matches!(self.peek_n(1), Some(Token::Colon))
+        {
+            let module = match self.advance_owned()? {
+                Token::Object => "object",
+                Token::Map => "map",
+                Token::Function => "function",
+                Token::Type => "type",
+                _ => unreachable!(),
+            }
+            .to_string();
+            self.advance()?; // ':'
+            let name = self.expect_ident("Expected type name after ':'")?;
+            return Ok(TypeDescriptor::Qualified { module, name });
         }
         if self.check(&Token::LBracket) {
             return self.parse_tuple_type();
@@ -2872,20 +2953,25 @@ impl Parser {
                 }
             }
             self.consume_gt("Expected '>' after type arguments")?;
-            // `table<R> key(field, ...)` carries a trailing key specifier; accept
-            // and discard it (parse-tolerant).
-            if matches!(self.peek(), Some(Token::Identifier(s)) if s == "key")
-                && matches!(self.peek_n(1), Some(Token::LParen))
-            {
-                self.advance()?; // 'key'
-                self.advance()?; // '('
-                let mut depth = 1;
-                while depth > 0 {
-                    match self.advance_owned()? {
-                        Token::LParen => depth += 1,
-                        Token::RParen => depth -= 1,
-                        _ => {}
+            // `table<R> key(field, ...)` or `table<R> key<[K1, K2]>` carries a
+            // trailing key specifier; accept and discard it (parse-tolerant).
+            if matches!(self.peek(), Some(Token::Identifier(s)) if s == "key") {
+                if matches!(self.peek_n(1), Some(Token::LParen)) {
+                    self.advance()?; // 'key'
+                    self.advance()?; // '('
+                    let mut depth = 1;
+                    while depth > 0 {
+                        match self.advance_owned()? {
+                            Token::LParen => depth += 1,
+                            Token::RParen => depth -= 1,
+                            _ => {}
+                        }
                     }
+                } else if matches!(self.peek_n(1), Some(Token::Lt)) {
+                    self.advance()?; // 'key'
+                    self.advance()?; // '<'
+                    let _ = self.parse_type_descriptor()?;
+                    self.consume_gt("Expected '>' after key type")?;
                 }
             }
             return Ok(TypeDescriptor::Generic { name, args });
@@ -3441,7 +3527,13 @@ impl Parser {
             }
             Some(token)
                 if Self::is_type_start(token)
-                    || matches!(token, Token::Identifier(_) | Token::Record | Token::Object) =>
+                    || matches!(
+                        token,
+                        Token::Identifier(_)
+                            | Token::Record
+                            | Token::Object
+                            | Token::StringLiteral(_)
+                    ) =>
             {
                 self.skip_type(0)
                     .is_some_and(|end| matches!(self.peek_n(end), Some(Token::Identifier(_))))
@@ -3491,6 +3583,8 @@ impl Parser {
             Token::LBracket => {
                 offset = self.scan_balanced(offset, &Token::LBracket, &Token::RBracket)?;
             }
+            // Singleton literal type, e.g. `"off" arg = "off";` or `1|2 x = 1;`.
+            Token::StringLiteral(_) | Token::Number(_) | Token::True | Token::False => offset += 1,
             _ => return None,
         }
         // Module qualification `mod:Type`.
