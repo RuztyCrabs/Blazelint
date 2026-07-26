@@ -1,0 +1,423 @@
+# Official Ballerina 2024R1 syntactic productions -> minimal snippet.
+# Format: <production-name>\t<snippet with \n for newlines>
+# 'PARENT:<name>' means the production is a structural sub-part of <name>.
+# Regenerate/verify with: cargo test --lib grammar_coverage_of_official_spec
+absolute-resource-path	PARENT:service-decl
+action	PARENT:start-action
+action-or-expr	PARENT:start-action
+action-stmt	function h() returns error? {\ncl->m();\n}
+additive-expr	function h() returns error? {\nvar a = b + c;\n}
+aggregated-variable-reference	PARENT:query-collect-expr
+alternate-receive-action	function h() returns error? {\nint a = <- w1 | w2;\n}
+alternate-wait-action	function h() returns error? {\nvar a = wait f1 | f2;\n}
+annot-access-expr	function h() returns error? {\nvar a = t.@ann;\n}
+annot-attach-point	PARENT:annotation-decl
+annot-attach-points	PARENT:annotation-decl
+annot-tag	PARENT:annotation-decl
+annot-tag-reference	PARENT:metadata
+annot-value	@A { x: 1 } function f() { }
+annotation	PARENT:metadata
+annotation-decl	annotation A on function;
+annots	PARENT:metadata
+anonymous-function-expr	function h() returns error? {\nvar a = function(int x) returns int { return x; };\n}
+any-type-descriptor	type T any;
+anydata-type-descriptor	type T anydata;
+arg-list	PARENT:function-call-expr
+arg-name	PARENT:named-args
+array-dimension	type T int[3];
+array-length	PARENT:array-dimension
+array-member-type-descriptor	PARENT:array-type-descriptor
+array-type-descriptor	type T int[];
+assignment-stmt	function h() returns error? {\na = 1;\n}
+async-send-action	function h() returns error? {\n1 -> w1;\n}
+attach-point	PARENT:service-decl
+behavioral-type-descriptor	type T error;
+binary-bitwise-expr	function h() returns error? {\nvar a = b & c;\n}
+binding-pattern	function h() returns error? {\nvar a = 1;\n}
+binding-pattern-not-variable-reference	PARENT:destructuring-assignment-stmt
+bitwise-and-expr	function h() returns error? {\nvar a = b & c;\n}
+bitwise-or-expr	function h() returns error? {\nvar a = b | c;\n}
+bitwise-xor-expr	function h() returns error? {\nvar a = b ^ c;\n}
+block-function-body	function f() { }
+boolean-literal	function h() returns error? {\nvar a = true;\n}
+boolean-type-descriptor	type T boolean;
+break-stmt	function h() returns error? {\nwhile c { break; }\n}
+byte-array-literal	function h() returns error? {\nbyte[] a = base16 `55 EE`;\n}
+byte-type-descriptor	type T byte;
+call-action-or-expr	PARENT:start-action
+call-expr	PARENT:call-stmt
+call-stmt	function h() returns error? {\ng();\n}
+capture-binding-pattern	function h() returns error? {\nvar a = 1;\n}
+checking-action-or-expr	function h() returns error? {\nvar a = check cl->m();\n}
+checking-expr	function h() returns error? {\nvar a = check g();\n}
+checking-keyword	PARENT:checking-expr
+checking-stmt	function h() returns error? {\ncheck g();\n}
+class-descriptor	PARENT:explicit-new-expr
+class-member	PARENT:module-class-defn
+class-type-quals	distinct service class C { }
+client-remote-method-call-action	function h() returns error? {\nvar a = cl->m(1);\n}
+client-resource-access-action	function h() returns error? {\nvar a = cl->/p/q();\n}
+collect-action-clause	PARENT:query-collect-expr
+collect-clause	PARENT:query-collect-expr
+commit-action	function h() returns error? {\ntransaction { check commit; }\n}
+compound-assignment-stmt	function h() returns error? {\na += 1;\n}
+computed-name-field	function h() returns error? {\nvar a = {[k]: 1};\n}
+computed-resource-access-path-segment	function h() returns error? {\nvar a = cl->/p/[id]();\n}
+conditional-expr	function h() returns error? {\nvar a = c ? 1 : 0;\n}
+const-expr	const C = 1;
+const-pattern	function h() returns error? {\nmatch v { 1 => { } }\n}
+constant-reference-expr	const A = 1; const B = A;
+container-expression	PARENT:member-access-expr
+continue-stmt	function h() returns error? {\nwhile c { continue; }\n}
+data-tag	PARENT:tagged-data-template-expr
+default-expression	type T record {| int a = 1; |};
+default-worker	PARENT:named-worker-decl
+default-worker-init	PARENT:named-worker-decl
+defaultable-param	function f(int a = 1) { }
+defaultable-params	function f(int a = 1) { }
+destructuring-assignment-stmt	function h() returns error? {\n[a, b] = t;\n}
+distinct-type-descriptor	type T distinct error;
+do-clause	PARENT:query-action
+do-stmt	function h() returns error? {\ndo { }\n}
+dot-resource-path	service /a on l { resource function get .() returns int { return 1; } }
+dual-attach-point	PARENT:annotation-decl
+dual-attach-point-ident	PARENT:annotation-decl
+enum-member	PARENT:module-enum-decl
+equality-expr	function h() returns error? {\nvar a = b == c;\n}
+error-arg-list	PARENT:error-constructor-expr
+error-arg-list-binding-pattern	PARENT:error-binding-pattern
+error-arg-list-match-pattern	PARENT:error-match-pattern
+error-binding-pattern	function h() returns error? {\nvar error(msg) = e;\n}
+error-cause-binding-pattern	function h() returns error? {\nvar error(m, c) = e;\n}
+error-cause-match-pattern	function h() returns error? {\nmatch v { error(var m, var c) => { } }\n}
+error-constructor-expr	function h() returns error? {\nvar a = error("m");\n}
+error-field-binding-patterns	function h() returns error? {\nvar error(m, c, k = v) = e;\n}
+error-field-match-patterns	function h() returns error? {\nmatch v { error(var m, var c, k = var x) => { } }\n}
+error-match-pattern	function h() returns error? {\nmatch v { error(var m) => { } }\n}
+error-message-binding-pattern	PARENT:error-binding-pattern
+error-message-match-pattern	PARENT:error-match-pattern
+error-type-descriptor	type T error<record {| int c; |}>;
+error-type-reference	function h() returns error? {\nSampleErr error(m) = e;\n}
+exclusive-record-type-descriptor	type T record {| int a; |};
+explicit-anonymous-function-expr	PARENT:anonymous-function-expr
+explicit-new-expr	function h() returns error? {\nvar a = new C(1);\n}
+expr-function-body	function f() returns int => 1;
+expr-only	PARENT:expression
+expression	function h() returns error? {\nvar a = 1;\n}
+expression-list	PARENT:service-decl
+external-function-body	function f() = external;
+fail-stmt	function h() returns error? {\nfail error("x");\n}
+field	PARENT:mapping-constructor-expr
+field-access-expr	function h() returns error? {\nvar a = o.f;\n}
+field-access-lvexpr	function h() returns error? {\no.f = 1;\n}
+field-binding-pattern	function h() returns error? {\nvar {a: x} = m;\n}
+field-binding-patterns	PARENT:mapping-binding-pattern
+field-descriptor	PARENT:record-type-descriptor
+field-initializer	PARENT:object-field
+field-match-pattern	PARENT:mapping-match-pattern
+field-match-patterns	PARENT:mapping-match-pattern
+field-name	PARENT:record-type-descriptor
+field-name-expr	PARENT:computed-name-field
+floating-point-literal	function h() returns error? {\nvar a = 1.5e3;\n}
+floating-point-type-descriptor	type T float;
+flush-action	function h() returns error? {\nvar a = flush w1;\n}
+foreach-stmt	function h() returns error? {\nforeach int i in xs { }\n}
+fork-stmt	function h() returns error? {\nfork { worker w1 { } }\n}
+from-action-clause	PARENT:query-action
+from-clause	PARENT:query-expr
+function-call-expr	function h() returns error? {\ng();\n}
+function-defn	function f() { }
+function-defn-body	PARENT:block-function-body
+function-quals	type T isolated function () returns int;
+function-reference	PARENT:function-call-expr
+function-signature	PARENT:function-type-descriptor
+function-type-descriptor	type T function (int) returns int;
+future-type-descriptor	type T future<int>;
+group-by-clause	function h() returns error? {\nvar a = from int i in xs group by i select i;\n}
+grouping-key	PARENT:group-by-clause
+handle-type-descriptor	type T handle;
+identifier	function h() returns error? {\nint 'version = 1;\n}
+if-else-stmt	function h() returns error? {\nif c { } else { }\n}
+implicit-new-expr	function h() returns error? {\nC a = new;\n}
+import-decl	import ballerina/io;
+import-identifier	PARENT:import-decl
+import-prefix	import ballerina/io as x;
+included-record-param	function f(*R r) { }
+included-record-params	function f(*R r) { }
+inclusive-record-type-descriptor	type T record { int a; };
+individual-field-descriptor	PARENT:record-type-descriptor
+infer-anonymous-function-expr	function h() returns error? {\nvar a = x => x;\n}
+infer-param-list	function h() returns error? {\nvar a = (x, y) => x;\n}
+inferable-array-dimension	type T int[*];
+inferable-array-length	PARENT:inferable-array-dimension
+inferable-type-descriptor	function f() { var x = 1; }
+inferred-array-length	PARENT:inferable-array-dimension
+inferred-typedesc-default	function f(typedesc<any> t = <>) { }
+int-literal	function h() returns error? {\nvar a = 0xFF;\n}
+int-type-descriptor	type T int;
+intermediate-action-clause	PARENT:query-action
+intermediate-clause	PARENT:query-expr
+interpolation	PARENT:string-template-expr
+intersection-type-descriptor	type T readonly & int;
+is-expr	function h() returns error? {\nvar a = b is int;\n}
+isolated-qual	isolated function f() { }
+join-action-clause	PARENT:join-clause
+join-clause	function h() returns error? {\nvar a = from int i in xs join int j in ys on i equals j select i;\n}
+join-on-condition	PARENT:join-clause
+json-type-descriptor	type T json;
+key-constraint	PARENT:table-type-descriptor
+key-expression	PARENT:member-access-expr
+key-specifier	PARENT:table-type-descriptor
+key-type-constraint	type T table<R> key<int>;
+let-action-clause	PARENT:let-clause
+let-action-var-decl	PARENT:let-clause
+let-clause	function h() returns error? {\nvar a = from int i in xs let int j = i select j;\n}
+let-expr	function h() returns error? {\nvar a = let int b = 1 in b;\n}
+let-var-decl	PARENT:let-expr
+limit-clause	function h() returns error? {\nvar a = from int i in xs limit 5 select i;\n}
+list-binding-pattern	function h() returns error? {\nvar [a, b] = t;\n}
+list-constructor-expr	function h() returns error? {\nvar a = [1, 2];\n}
+list-match-pattern	function h() returns error? {\nmatch v { [var a, var b] => { } }\n}
+list-member	PARENT:list-constructor-expr
+list-member-binding-patterns	PARENT:list-binding-pattern
+list-member-list	PARENT:list-constructor-expr
+list-member-match-patterns	PARENT:list-match-pattern
+list-type-descriptor	type T int[];
+listener-decl	listener http:Listener l = new (9090);
+literal	function h() returns error? {\nvar a = 1;\n}
+local-init-var-decl-stmt	function h() returns error? {\nint a = 1;\n}
+local-no-init-var-decl-stmt	function h() returns error? {\nint a;\n}
+local-var-decl-stmt	function h() returns error? {\nint a = 1;\n}
+lock-stmt	function h() returns error? {\nlock { }\n}
+logical-and-expr	function h() returns error? {\nvar a = b && c;\n}
+logical-expr	function h() returns error? {\nvar a = b && c;\n}
+logical-or-expr	function h() returns error? {\nvar a = b || c;\n}
+lvexpr	function h() returns error? {\na = 1;\n}
+map-type-descriptor	type T map<int>;
+mapping-binding-pattern	function h() returns error? {\nvar {a, b} = m;\n}
+mapping-constructor-expr	function h() returns error? {\nvar a = {k: 1};\n}
+mapping-match-pattern	function h() returns error? {\nmatch v { {k: var a} => { } }\n}
+mapping-type-descriptor	type T map<int>;
+match-clause	PARENT:match-stmt
+match-guard	function h() returns error? {\nmatch v { var y if y > 0 => { } }\n}
+match-guard-expr	PARENT:match-guard
+match-pattern	PARENT:match-stmt
+match-pattern-list	function h() returns error? {\nmatch v { 1 | 2 => { } }\n}
+match-stmt	function h() returns error? {\nmatch v { _ => { } }\n}
+match-target	PARENT:match-stmt
+member-access-expr	function h() returns error? {\nvar a = c[0];\n}
+member-access-lvexpr	function h() returns error? {\nc[0] = 1;\n}
+member-type-descriptor	PARENT:tuple-type-descriptor
+metadata	@A function f() { }
+method-call-expr	function h() returns error? {\nvar a = o.m(1);\n}
+method-decl	type T object { function m(); };
+method-defn	class C { function m() { } }
+method-defn-body	PARENT:method-defn
+method-name	PARENT:method-decl
+method-quals	PARENT:method-decl
+module-class-defn	class C { }
+module-const-decl	const C = 1;
+module-enum-decl	enum E { A, B }
+module-init-var-decl	int g = 1;
+module-init-var-quals	configurable int g = 1;
+module-name	import ballerina/lang.value;
+module-no-init-var-decl	int g;
+module-part	import ballerina/io;
+module-prefix	PARENT:qualified-identifier
+module-type-defn	type T int;
+module-var-decl	int g = 1;
+module-var-init	PARENT:module-init-var-decl
+module-xmlns-decl	xmlns "http://x" as ns;
+multi-key-expression	function h() returns error? {\nvar a = t["x", "y"];\n}
+multiple-receive-action	function h() returns error? {\nvar a = <- {x: w1, y: w2};\n}
+multiple-wait-action	function h() returns error? {\nvar a = wait {x: f1, y: f2};\n}
+multiplicative-expr	function h() returns error? {\nvar a = b * c;\n}
+named-arg	PARENT:named-args
+named-arg-binding-pattern	PARENT:error-field-binding-patterns
+named-arg-match-pattern	PARENT:error-field-match-patterns
+named-args	function h() returns error? {\ng(a = 1);\n}
+named-worker-decl	function h() returns error? {\nworker w1 { }\n}
+never-type-descriptor	type T never;
+new-expr	function h() returns error? {\nvar a = new C(1);\n}
+nil-conditional-expr	function h() returns error? {\nvar a = c ?: 0;\n}
+nil-lifted-expr	function h() returns error? {\nvar a = o?.f;\n}
+nil-literal	function h() returns error? {\nvar a = ();\n}
+nil-type-descriptor	type T ();
+numeric-literal	function h() returns error? {\nvar a = 1.5;\n}
+object-constructor-block	PARENT:object-constructor-expr
+object-constructor-expr	function h() returns error? {\nvar a = object { int x = 1; };\n}
+object-field	class C { int x = 1; }
+object-field-descriptor	PARENT:object-type-descriptor
+object-member	PARENT:object-constructor-expr
+object-member-descriptor	PARENT:object-type-descriptor
+object-network-qual	type T client object { };
+object-type-descriptor	type T object { public int x; };
+object-type-inclusion	class C { *B; }
+object-type-quals	type T isolated object { };
+object-visibility-qual	class C { public int x = 1; }
+on-conflict-clause	function h() returns error? {\nvar a = from int i in xs select i on conflict error("d");\n}
+on-fail-clause	PARENT:stmt-with-on-fail
+optional-field-access-expr	function h() returns error? {\nvar a = o?.f;\n}
+optional-type-descriptor	type T int?;
+order-by-clause	function h() returns error? {\nvar a = from int i in xs order by i select i;\n}
+order-direction	function h() returns error? {\nvar a = from int i in xs order by i descending select i;\n}
+order-key	PARENT:order-by-clause
+org-name	PARENT:import-decl
+other-args	PARENT:function-call-expr
+other-decl	PARENT:function-defn
+other-type-descriptor	type T any;
+panic-stmt	function h() returns error? {\npanic error("x");\n}
+param-list	function f(int a) { }
+param-name	PARENT:required-param
+peer-worker	PARENT:send-action
+positional-arg	PARENT:positional-args
+positional-args	function h() returns error? {\ng(1, 2);\n}
+predeclared-prefix	function f() { var a = int:max(1,2); }
+qualified-identifier	type T mod:Other;
+query-action	function h() returns error? {\nfrom int i in xs do { };\n}
+query-action-or-expr	PARENT:query-action
+query-action-pipeline	PARENT:query-action
+query-collect-action-or-expr	PARENT:query-collect-expr
+query-collect-expr	function h() returns error? {\nvar a = from int i in xs collect sum(i);\n}
+query-construct-type	function h() returns error? {\nvar a = map from int i in xs select [k, i];\n}
+query-expr	function h() returns error? {\nvar a = from int i in xs select i;\n}
+query-pipeline	PARENT:query-expr
+query-select-action-or-expr	PARENT:query-expr
+query-select-expr	PARENT:query-expr
+range-expr	function h() returns error? {\nvar a = 1...5;\n}
+raw-template-expr	function h() returns error? {\nvar a = `x ${y}`;\n}
+readonly-type-descriptor	type T readonly;
+receive-action	PARENT:single-receive-action
+receive-field	PARENT:multiple-receive-action
+record-rest-descriptor	type T record {| int...; |};
+record-type-descriptor	type T record { int a; };
+record-type-inclusion	type T record {| *B; |};
+regular-compound-stmt	PARENT:if-else-stmt
+relational-expr	function h() returns error? {\nvar a = b < c;\n}
+remote-method-decl	type T client object { remote function m(); };
+remote-method-defn	client class C { remote function m() { } }
+remote-method-name	PARENT:remote-method-decl
+remote-method-quals	PARENT:remote-method-decl
+remote-qual	PARENT:remote-method-decl
+required-param	function f(int a) { }
+required-params	function f(int a) { }
+resource-access-path	PARENT:client-resource-access-action
+resource-access-path-segment	PARENT:client-resource-access-action
+resource-access-path-segments	PARENT:client-resource-access-action
+resource-access-rest-segment	function h() returns error? {\nvar a = cl->/p/[...r]();\n}
+resource-method-decl	type T service object { resource function get p(); };
+resource-method-defn	service /a on l { resource function get p() returns int { return 1; } }
+resource-method-name	PARENT:resource-method-decl
+resource-method-quals	PARENT:resource-method-decl
+resource-path	PARENT:resource-method-decl
+resource-path-rest-param	service /a on l { resource function get x/[int... r]() returns int { return 1; } }
+resource-path-segment	service /a on l { resource function get x/y() returns int { return 1; } }
+resource-path-segment-name	PARENT:resource-path-segment
+resource-path-segment-param	service /a on l { resource function get x/[int id]() returns int { return 1; } }
+resource-qual	PARENT:resource-method-decl
+rest-arg	function h() returns error? {\ng(...xs);\n}
+rest-binding-pattern	function h() returns error? {\nvar {a, ...r} = m;\n}
+rest-match-pattern	function h() returns error? {\nmatch v { {k: var a, ...var r} => { } }\n}
+rest-param	function f(int... xs) { }
+retry-spec	function h() returns error? {\nretry<T>(3) { }\n}
+retry-stmt	function h() returns error? {\nretry { }\n}
+retry-transaction-stmt	function h() returns error? {\nretry transaction { }\n}
+return-stmt	function h() returns error? {\nreturn;\n}
+return-type-descriptor	function f() returns int { return 1; }
+rollback-stmt	function h() returns error? {\ntransaction { rollback; }\n}
+root-resource-path	service / on l { }
+row-list	PARENT:table-constructor-expr
+row-type-parameter	PARENT:table-type-descriptor
+select-action-clause	PARENT:query-expr
+select-clause	PARENT:query-expr
+send-action	PARENT:async-send-action
+sequence-type-descriptor	type T string;
+service-decl	service /a on l { }
+shift-expr	function h() returns error? {\nvar a = b << c;\n}
+simple-binding-pattern	PARENT:error-binding-pattern
+simple-const-expr	const C = -1;
+simple-match-pattern	PARENT:error-match-pattern
+simple-type-descriptor	type T int;
+single-list-member	PARENT:list-constructor-expr
+single-receive-action	function h() returns error? {\nint a = <- w1;\n}
+single-wait-action	function h() returns error? {\nvar a = wait f1;\n}
+singleton-type-descriptor	type T 1;
+source-only-attach-point	annotation A on source var;
+source-only-attach-point-ident	PARENT:source-only-attach-point
+special-method-name	class C { function init() { } }
+specific-field	function h() returns error? {\nvar a = {k: 1, n};\n}
+spread	PARENT:spread-list-member
+spread-field	function h() returns error? {\nvar a = {...r};\n}
+spread-list-member	function h() returns error? {\nvar a = [...xs];\n}
+start-action	function h() returns error? {\nvar a = start g();\n}
+statement	PARENT:local-init-var-decl-stmt
+statement-block	PARENT:block-function-body
+stmt-with-on-fail	function h() returns error? {\ndo { } on fail error e { }\n}
+stream-type-descriptor	type T stream<int, error?>;
+stream-type-parameters	PARENT:stream-type-descriptor
+string-literal	function h() returns error? {\nvar a = "s";\n}
+string-template-expr	function h() returns error? {\nvar a = string `x ${y}`;\n}
+string-type-descriptor	type T string;
+structural-constructor-expr	function h() returns error? {\nvar a = [1];\n}
+structured-type-descriptor	type T int[];
+sync-send-action	function h() returns error? {\nvar a = 1 ->> w1;\n}
+table-constructor-expr	function h() returns error? {\nvar a = table [{k: 1}];\n}
+table-type-descriptor	type T table<record {| readonly int k; |}> key(k);
+tagged-data-template-expr	function h() returns error? {\nvar a = re `[a-z]`;\n}
+tagged-data-type-descriptor	type T int:Signed32;
+template-expr	function h() returns error? {\nvar a = string `x`;\n}
+ternary-conditional-expr	function h() returns error? {\nvar a = c ? 1 : 0;\n}
+transaction-stmt	function h() returns error? {\ntransaction { check commit; }\n}
+transactional-expr	function h() returns error? {\nvar a = transactional;\n}
+transactional-qual	transactional function f() returns error? { }
+trap-action-or-expr	function h() returns error? {\nvar a = trap cl->m();\n}
+trap-expr	function h() returns error? {\nvar a = trap g();\n}
+tuple-member-type-descriptors	PARENT:tuple-type-descriptor
+tuple-rest-descriptor	type T [int, string...];
+tuple-type-descriptor	type T [int, string];
+type-cast-action-or-expr	function h() returns error? {\nvar a = <int>start g();\n}
+type-cast-expr	function h() returns error? {\nvar a = <int>v;\n}
+type-cast-param	PARENT:type-cast-expr
+type-descriptor	type T int;
+type-parameter	type T xml<never>;
+type-reference	type T Other;
+typed-binding-pattern	function h() returns error? {\nint a = 1;\n}
+typedesc-type-descriptor	type T typedesc<int>;
+typeof-expr	function h() returns error? {\nvar a = typeof v;\n}
+unary-logical-expr	function h() returns error? {\nvar a = !b;\n}
+unary-numeric-expr	function h() returns error? {\nvar a = -b;\n}
+union-type-descriptor	type T int|string;
+value-expr	PARENT:specific-field
+variable-name	PARENT:capture-binding-pattern
+variable-reference	PARENT:variable-reference-expr
+variable-reference-expr	function h() returns error? {\nvar a = b;\n}
+variable-reference-lvexpr	function h() returns error? {\na = 1;\n}
+wait-action	function h() returns error? {\nvar a = wait f1;\n}
+wait-field	PARENT:multiple-wait-action
+wait-future-expr	PARENT:wait-action
+where-clause	function h() returns error? {\nvar a = from int i in xs where i > 1 select i;\n}
+while-stmt	function h() returns error? {\nwhile c { }\n}
+wildcard-binding-pattern	function h() returns error? {\nvar _ = f();\n}
+wildcard-match-pattern	function h() returns error? {\nmatch v { _ => { } }\n}
+worker-name	PARENT:named-worker-decl
+xml-all-children-step	function h() returns error? {\nvar a = d/*;\n}
+xml-atomic-name-pattern	PARENT:xml-name-pattern
+xml-attribute-access-expr	function h() returns error? {\nvar a = x.@attr;\n}
+xml-attribute-name	PARENT:xml-attribute-access-expr
+xml-element-children-step	function h() returns error? {\nvar a = d/<b>;\n}
+xml-element-descendants-step	function h() returns error? {\nvar a = d/**/<b>;\n}
+xml-filter-expr	function h() returns error? {\nvar a = d.<b>;\n}
+xml-name-pattern	function h() returns error? {\nvar a = d/<b|c>;\n}
+xml-namespace-prefix	PARENT:xmlns-decl-stmt
+xml-namespace-uri	PARENT:xmlns-decl-stmt
+xml-navigate-expr	function h() returns error? {\nvar a = d/<b>;\n}
+xml-optional-attribute-access-expr	function h() returns error? {\nvar a = x?.@attr;\n}
+xml-qualified-name	function h() returns error? {\nvar a = d.<ns:b>;\n}
+xml-required-attribute-access-expr	function h() returns error? {\nvar a = x.@attr;\n}
+xml-step-expr	function h() returns error? {\nvar a = d/*;\n}
+xml-step-extend	function h() returns error? {\nvar a = d/<b>.c;\n}
+xml-step-start	PARENT:xml-step-expr
+xml-template-expr	function h() returns error? {\nvar a = xml `<a/>`;\n}
+xml-type-descriptor	type T xml;
+xmlns-decl	PARENT:xmlns-decl-stmt
+xmlns-decl-stmt	function h() returns error? {\nxmlns "http://x" as ns;\n}
