@@ -133,6 +133,19 @@ impl Parser {
         // Consume any run of leading qualifiers (public/isolated/readonly/...).
         let (is_public, qualifiers) = self.parse_leading_qualifiers()?;
 
+        // Contextual declarations may also be qualified (`public annotation A ...`,
+        // `public listener L = ...`), so re-check them after the qualifiers.
+        if let Some(Token::Identifier(word)) = self.peek() {
+            match word.as_str() {
+                "annotation" => return self.annotation_declaration(),
+                "listener" => return self.listener_declaration(),
+                "service" if !matches!(self.peek_n(1), Some(Token::Class | Token::Object)) => {
+                    return self.service_declaration()
+                }
+                _ => {}
+            }
+        }
+
         match self.peek() {
             Some(Token::Type) => self.type_definition(is_public),
             Some(Token::Enum) => self.enum_definition(is_public),
@@ -375,6 +388,20 @@ impl Parser {
                 qualifiers.push("public".to_string());
             } else if self.match_token(&[Token::Isolated])? {
                 qualifiers.push("isolated".to_string());
+            } else if self.check(&Token::Const)
+                && matches!(self.peek_n(1), Some(Token::Identifier(s)) if s == "annotation")
+            {
+                // `public const annotation A on ...;` — `const` qualifies the
+                // annotation here rather than starting a constant declaration.
+                self.advance()?;
+                qualifiers.push("const".to_string());
+            } else if self.check_ctx_kw("readonly")
+                && matches!(self.peek_n(1), Some(Token::Class) | Some(Token::Object))
+            {
+                // `readonly class C` — a qualifier, unlike the `readonly` type or
+                // the `readonly & T` intersection.
+                self.advance()?;
+                qualifiers.push("readonly".to_string());
             } else if self.check_ctx_kw("distinct")
                 && (matches!(self.peek_n(1), Some(Token::Class))
                     || matches!(self.peek_n(1), Some(Token::Identifier(s)) if matches!(s.as_str(), "service" | "client")))
@@ -1148,19 +1175,30 @@ impl Parser {
     /// Parses a named function/method body: a `{ block }`, an expression body
     /// `=> expr;`, or an external body `= external;`.
     fn named_function_body(&mut self) -> ParseResult<Vec<Stmt>> {
-        // External function body: `= external;` (implementation supplied by the
-        // runtime, so there is no body to analyze).
+        // External function body: `= external;`, optionally with annotations
+        // (`= @java:Method { name: "x" } external;`). The implementation is
+        // supplied by the runtime, so there is no body to analyse.
         if self.check(&Token::Eq)
-            && matches!(self.peek_n(1), Some(Token::Identifier(s)) if s == "external")
+            && matches!(self.peek_n(1), Some(Token::At) | Some(Token::Identifier(_)))
         {
-            self.advance()?; // '='
-            self.advance()?; // 'external'
-            self.consume(
-                Token::Semicolon,
-                "Expected ';' after external function body",
-                Some("';'"),
-            )?;
-            return Ok(Vec::new());
+            let is_external = if matches!(self.peek_n(1), Some(Token::At)) {
+                true
+            } else {
+                matches!(self.peek_n(1), Some(Token::Identifier(s)) if s == "external")
+            };
+            if is_external {
+                self.advance()?; // '='
+                self.skip_annotations()?;
+                if matches!(self.peek(), Some(Token::Identifier(s)) if s == "external") {
+                    self.advance()?; // 'external'
+                }
+                self.consume(
+                    Token::Semicolon,
+                    "Expected ';' after external function body",
+                    Some("';'"),
+                )?;
+                return Ok(Vec::new());
+            }
         }
         if self.match_token(&[Token::Arrow])? {
             let expr = self.expression()?;
@@ -2047,10 +2085,15 @@ impl Parser {
                     };
                 }
             } else if self.check(&Token::Slash)
-                && matches!(
-                    self.peek_n(1),
-                    Some(Token::Lt) | Some(Token::Star) | Some(Token::StarStar)
-                )
+                && (matches!(self.peek_n(1), Some(Token::Star) | Some(Token::StarStar))
+                    // `/<name>` is an XML step only when a *name* follows the
+                    // `<`. A builtin type there means this is division by a cast,
+                    // as in `total / <float>count`.
+                    || (matches!(self.peek_n(1), Some(Token::Lt))
+                        && matches!(
+                            self.peek_n(2),
+                            Some(Token::Identifier(_)) | Some(Token::Star)
+                        )))
             {
                 // XML navigation: `x/<name>` (children), `x/*` (all children),
                 // `x/**/<name>` (descendants). The step is recorded as a field
@@ -3177,11 +3220,22 @@ impl Parser {
         if self.check(&Token::LBracket) {
             return self.parse_tuple_type();
         }
-        // Nil type `()`.
-        if self.check(&Token::LParen) && matches!(self.peek_n(1), Some(Token::RParen)) {
-            self.advance()?;
-            self.advance()?;
-            return Ok(TypeDescriptor::Basic("()".to_string()));
+        // Nil type `()`, or a parenthesised type `(any|error)[]` where the
+        // parentheses group a union/intersection so a suffix can apply to it.
+        if self.check(&Token::LParen) {
+            if matches!(self.peek_n(1), Some(Token::RParen)) {
+                self.advance()?;
+                self.advance()?;
+                return Ok(TypeDescriptor::Basic("()".to_string()));
+            }
+            self.advance()?; // '('
+            let inner = self.parse_type_descriptor()?;
+            self.consume(
+                Token::RParen,
+                "Expected ')' after parenthesised type",
+                Some("')'"),
+            )?;
+            return Ok(inner);
         }
         // Singleton literal types: 1, -1, "OPEN", true, false
         if matches!(
@@ -3926,6 +3980,10 @@ impl Parser {
             }
             // Singleton literal type, e.g. `"off" arg = "off";` or `1|2 x = 1;`.
             Token::StringLiteral(_) | Token::Number(_) | Token::True | Token::False => offset += 1,
+            // Nil type `()` or a parenthesised type `(int|string)`.
+            Token::LParen => {
+                offset = self.scan_balanced(offset, &Token::LParen, &Token::RParen)?;
+            }
             _ => return None,
         }
         // Module qualification `mod:Type`.
