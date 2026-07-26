@@ -173,18 +173,14 @@ impl<'input> Lexer<'input> {
                 // block-comment form (the official compiler rejects `/*` as an
                 // invalid token). Treating `/*` as a comment would also swallow
                 // the XML all-children navigation step `x/*`.
-                '/' => {
-                    if self.peek_next() == Some('/') {
-                        self.advance(); // Consume '/'
-                        self.advance(); // Consume second '/'
-                        while self.peek() != Some(&'\n') && !self.is_at_end() {
-                            self.advance();
-                        }
-                        if self.peek() == Some(&'\n') {
-                            self.advance();
-                        }
-                    } else {
-                        return Ok(());
+                '/' if self.peek_next() == Some('/') => {
+                    self.advance(); // Consume '/'
+                    self.advance(); // Consume second '/'
+                    while self.peek() != Some(&'\n') && !self.is_at_end() {
+                        self.advance();
+                    }
+                    if self.peek() == Some(&'\n') {
+                        self.advance();
                     }
                 }
                 _ => return Ok(()),
