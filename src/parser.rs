@@ -1349,16 +1349,20 @@ impl Parser {
         if self.check(&Token::Function) {
             self.advance()?; // 'function'
             let keyword_span = self.previous_span();
+            let mut path_params = Vec::new();
             let name = if is_resource {
                 let accessor = self.expect_ident("Expected resource accessor")?;
-                self.skip_resource_path_signature()?;
+                path_params = self.parse_resource_path_signature()?;
                 accessor
             } else {
                 self.expect_ident("Expected method name")?
             };
             let name_span = self.previous_span();
             self.consume(Token::LParen, "Expected '(' after method name", Some("'('"))?;
-            let params = self.parse_params()?;
+            let mut params = self.parse_params()?;
+            // Path parameters are in scope for the body alongside the declared
+            // parameters.
+            params.splice(0..0, path_params);
             self.consume(Token::RParen, "Expected ')' after parameters", Some("')'"))?;
             let return_type = if self.match_token(&[Token::Returns])? {
                 Some(self.parse_type_descriptor()?)
@@ -1523,27 +1527,40 @@ impl Parser {
 
     /// Consumes a resource method's path signature (segments after the accessor,
     /// up to the parameter list `(`), including computed `[type name]` segments.
-    fn skip_resource_path_signature(&mut self) -> ParseResult<()> {
+    fn parse_resource_path_signature(&mut self) -> ParseResult<Vec<(String, TypeDescriptor)>> {
+        let mut params = Vec::new();
         loop {
             match self.peek() {
                 Some(Token::Dot) | Some(Token::Slash) | Some(Token::Identifier(_)) => {
                     self.advance()?;
                 }
+                // A path parameter `[string name]` (or rest `[string... rest]`)
+                // declares a variable usable in the method body, so it is
+                // returned as a parameter rather than discarded.
                 Some(Token::LBracket) => {
                     self.advance()?;
-                    let mut depth = 1;
-                    while depth > 0 {
-                        match self.advance_owned()? {
-                            Token::LBracket => depth += 1,
-                            Token::RBracket => depth -= 1,
-                            _ => {}
-                        }
+                    let mut ty = self.parse_type_descriptor()?;
+                    // A rest path parameter `[string... rest]` binds `string[]`.
+                    if self.match_token(&[Token::DotDotDot])? {
+                        ty = TypeDescriptor::Array {
+                            element_type: Box::new(ty),
+                            dimension: Some(ArrayDimension::Open),
+                        };
                     }
+                    if let Some(Token::Identifier(_)) = self.peek() {
+                        let name = self.expect_ident("Expected path parameter name")?;
+                        params.push((name, ty));
+                    }
+                    self.consume(
+                        Token::RBracket,
+                        "Expected ']' after path parameter",
+                        Some("']'"),
+                    )?;
                 }
                 _ => break,
             }
         }
-        Ok(())
+        Ok(params)
     }
 
     /// Parses an `annotation` declaration leniently up to its terminating `;`.
