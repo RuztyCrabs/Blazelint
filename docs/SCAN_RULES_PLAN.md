@@ -1,7 +1,11 @@
 # Plan: Parity with `bal scan` Rules
 
-**Goal** — move from 1 of 27 official scan rules to 8, by implementing the rules
+**Goal** — move from 1 of 27 official scan rules to 7, by implementing the rules
 our AST already supports.
+
+> **Status: complete.** All six rules below shipped. Parity is now **7/27**.
+> (An earlier draft of this document said 8; that was an arithmetic slip —
+> six new rules plus the pre-existing `ballerina:2` is seven.)
 
 **Why these** — the parser can already see `checkpanic`, ranges, assignments, and
 `isolated`. Nothing reads them. These four rule groups need one structural
@@ -18,7 +22,7 @@ change and no new analysis capability.
 |---|---|
 | Official scan rules | 27 (12 language + 15 library) |
 | Implemented | **1** — `ballerina:2` unused function parameter |
-| After this plan | **8** (30%) |
+| After this plan | **7** (26%) |
 
 Our other six rules (`camel-case`, `constant-case`, `line-length`,
 `max-function-length`, `missing-return`, `unused-variables`) are not in the scan

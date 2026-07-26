@@ -172,6 +172,13 @@ Each rule can be configured with one of these severity levels:
 | `max-function-length` | Limits function body length | `warn` | `max-function-length` |
 | `missing-return` | Ensures functions have return statements | `error` | None |
 | `unused-variables` | Detects unused variable declarations | `warn` | None |
+| `unused-parameters` | Detects unused function parameters (`bal scan` ballerina:2) | `off` | None |
+| `avoid-checkpanic` | Flags `checkpanic`, which panics on error (`bal scan` ballerina:1) | `warn` | None |
+| `self-assignment` | Flags `x = x` (`bal scan` ballerina:10) | `warn` | None |
+| `invalid-range` | Flags ranges that never iterate, e.g. `9...0` (`bal scan` ballerina:12) | `warn` | None |
+| `isolated-public-function` | Public function not `isolated` (`bal scan` ballerina:3) | `off` | None |
+| `isolated-public-method` | Public method not `isolated` (`bal scan` ballerina:4) | `off` | None |
+| `isolated-public-class` | Public class not `isolated` (`bal scan` ballerina:5) | `off` | None |
 
 ### Configuration Discovery
 
