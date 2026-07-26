@@ -1,5 +1,5 @@
 use crate::{
-    ast::{MatchPattern, Stmt, TypeDescriptor},
+    ast::{MatchPattern, Stmt},
     config::Config,
     errors::{Diagnostic, DiagnosticKind},
     linter::registry::LintRule,
@@ -18,18 +18,6 @@ impl MissingReturnRule {
     /// Creates a new `MissingReturn` rule.
     pub fn new() -> Self {
         Self
-    }
-
-    /// Returns true when a return type permits a function to fall off the end
-    /// without an explicit return (i.e. it can be nil): `T?`, `()`, or a union
-    /// containing nil. Such functions implicitly return `()`.
-    fn allows_implicit_nil(ty: &TypeDescriptor) -> bool {
-        match ty {
-            TypeDescriptor::Optional(_) => true,
-            TypeDescriptor::Basic(name) => name == "()" || name == "nil",
-            TypeDescriptor::Union(members) => members.iter().any(Self::allows_implicit_nil),
-            _ => false,
-        }
     }
 
     /// Recursively checks if a block of statements guarantees a return.
@@ -112,9 +100,7 @@ impl LintRule for MissingReturnRule {
                 ..
             } = stmt
             {
-                let requires_value = return_type
-                    .as_ref()
-                    .is_some_and(|ty| !Self::allows_implicit_nil(ty));
+                let requires_value = return_type.as_ref().is_some_and(|ty| !ty.is_nilable());
                 if requires_value && !self.check_returns_in_block(body) {
                     diagnostics.push(Diagnostic::new_tracked(
                         DiagnosticKind::Linter,

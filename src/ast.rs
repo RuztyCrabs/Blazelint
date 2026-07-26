@@ -62,6 +62,20 @@ pub struct RecordField {
     pub optional: bool,
 }
 
+impl TypeDescriptor {
+    /// Returns true when this type includes nil, i.e. `T?`, `()`, or a union
+    /// with a nil member. Such a type accepts a bare `return;`, and a function
+    /// declaring it may fall off the end without returning a value.
+    pub fn is_nilable(&self) -> bool {
+        match self {
+            TypeDescriptor::Optional(_) => true,
+            TypeDescriptor::Basic(name) => name == "()" || name == "nil",
+            TypeDescriptor::Union(members) => members.iter().any(Self::is_nilable),
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArrayDimension {
     Fixed(usize),

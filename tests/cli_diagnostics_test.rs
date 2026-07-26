@@ -180,6 +180,56 @@ fn named_arguments_are_not_undeclared_variables() {
     );
 }
 
+#[test]
+fn class_and_service_bodies_are_analysed() {
+    // Method bodies inside a class or service were previously invisible to the
+    // semantic pass, so errors there went unreported (docs/SEMANTIC_PLAN.md §B).
+    let bad = "class C {\n  function m() {\n    int x = \"type error\";\n  }\n}\n";
+    let (_output, _file_path) = run_cli(bad);
+    let out = stdout(&_output);
+    assert!(
+        out.contains("Type mismatch in initializer"),
+        "class method bodies must be type-checked, got:\n{out}"
+    );
+
+    // Valid object code stays clean: fields resolve, methods see each other
+    // regardless of declaration order, and `self` is always in scope.
+    let good = "class Counter {\n\
+                    private int count = 0;\n\
+                    int later;\n\
+                    function init(int later) { self.later = later; }\n\
+                    function inc() { self.count += 1; }\n\
+                    function get() returns int { return self.helper(); }\n\
+                    function helper() returns int { return self.count; }\n\
+                }\n";
+    let (output, _file_path) = run_cli(good);
+    let out = stdout(&output);
+    assert!(
+        !out.contains("Error:"),
+        "valid class should be clean, got:\n{out}"
+    );
+    assert!(output.status.success());
+}
+
+#[test]
+fn nilable_returns_and_wildcards_are_accepted() {
+    // `T?` includes nil, so a bare `return;` and falling off the end are both
+    // valid; `_` is the wildcard, not a variable (docs/SEMANTIC_PLAN.md §B/§D).
+    let code = "import ballerina/io;\n\
+                function a() returns error? { return; }\n\
+                function b() returns int? { io:println(\"x\"); }\n\
+                function c() returns int { return 1; }\n\
+                public function main() { _ = c(); }\n";
+    let (output, _file_path) = run_cli(code);
+    let out = stdout(&output);
+    assert!(!out.contains("Error:"), "should be clean, got:\n{out}");
+    assert!(output.status.success());
+
+    // A non-nilable return still requires a value.
+    let (_output, _file_path) = run_cli("function f() returns int { return; }\n");
+    assert!(stdout(&_output).contains("Missing return value"));
+}
+
 // ============================================================================
 // LEXER TESTS
 // ============================================================================

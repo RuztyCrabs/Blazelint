@@ -57,6 +57,9 @@ pub struct Symbol {
 /// Context for the function currently being analyzed.
 struct FunctionContext {
     return_type: Type,
+    /// True when the declared return type includes nil (`T?`, `()`, a union
+    /// with nil), so a bare `return;` is valid and falling off the end is fine.
+    returns_nilable: bool,
 }
 
 /// Performs semantic validation over a sequence of statements.
@@ -223,11 +226,17 @@ impl Analyzer {
                     .as_ref()
                     .map(|ctx| ctx.return_type.clone())
                     .unwrap_or(Type::Nil);
+                let nilable = self
+                    .current_function
+                    .as_ref()
+                    .is_some_and(|ctx| ctx.returns_nilable);
 
                 match value {
                     Some(expr) => {
                         let value_type = self.check_expr(expr);
-                        if !Self::can_assign(&expected, &value_type) {
+                        // A nilable return type also accepts an explicit nil.
+                        let nil_ok = nilable && value_type == Type::Nil;
+                        if !Self::can_assign(&expected, &value_type) && !nil_ok {
                             self.report(
                                 expr.span().clone(),
                                 format!(
@@ -239,7 +248,7 @@ impl Analyzer {
                         }
                     }
                     None => {
-                        if expected != Type::Nil {
+                        if expected != Type::Nil && !nilable {
                             self.report(
                                 span.clone(),
                                 format!(
@@ -391,6 +400,7 @@ impl Analyzer {
                 let previous = self.current_function.take();
                 self.current_function = Some(FunctionContext {
                     return_type: return_ty.clone(),
+                    returns_nilable: return_type.as_ref().is_some_and(|t| t.is_nilable()),
                 });
 
                 self.with_scope(|analyzer| {
@@ -435,9 +445,14 @@ impl Analyzer {
                     );
                 }
             }
+            // Class and service bodies are analysed like a scope containing the
+            // object's fields, so method bodies are type-checked and `self.x`
+            // resolves. Without this, every method in a class or service is
+            // invisible to the analyser.
+            Stmt::ClassDef { members, .. } | Stmt::ServiceDecl { members, .. } => {
+                self.check_object_body(members);
+            }
             Stmt::TypeDef { .. }
-            | Stmt::ClassDef { .. }
-            | Stmt::ServiceDecl { .. }
             | Stmt::ListenerDecl { .. }
             | Stmt::AnnotationDecl { .. }
             | Stmt::Xmlns { .. } => {}
@@ -775,7 +790,10 @@ impl Analyzer {
                     .map(|t| self.type_from_annotation(t))
                     .unwrap_or_else(|| Type::Unknown("infer".to_string()));
                 let previous = self.current_function.take();
-                self.current_function = Some(FunctionContext { return_type: ret });
+                self.current_function = Some(FunctionContext {
+                    return_type: ret,
+                    returns_nilable: return_type.as_ref().is_some_and(|t| t.is_nilable()),
+                });
                 self.scopes.push(HashMap::new());
                 for (param_name, param_ty) in params {
                     let ty = self.type_from_annotation(param_ty);
@@ -896,8 +914,10 @@ impl Analyzer {
                 self.check_expr(call);
                 Type::Unknown("future".to_string())
             }
-            // Object-constructor members are not deeply analyzed (deferred).
-            Expr::ObjectConstructor { .. } => Type::Unknown("object".to_string()),
+            Expr::ObjectConstructor { members, .. } => {
+                self.check_object_body(members);
+                Type::Unknown("object".to_string())
+            }
         }
     }
 
@@ -1120,6 +1140,10 @@ impl Analyzer {
         span: Span,
         rhs_type: Type,
     ) -> Type {
+        // `_ = expr;` explicitly discards a value; there is no symbol to bind.
+        if name == "_" {
+            return Type::Unknown("wildcard".to_string());
+        }
         if let Some(symbol) = self.lookup_symbol_mut(name) {
             let symbol_type = symbol.ty.clone();
             let issue = if symbol.is_const {
@@ -1205,6 +1229,17 @@ impl Analyzer {
 
     /// Resolves an identifier reference, emitting diagnostics when undefined or uninitialised.
     fn lookup_variable(&mut self, name: &str, span: Span) -> Type {
+        // `_` is the wildcard binding pattern, not a variable reference.
+        if name == "_" {
+            return Type::Unknown("wildcard".to_string());
+        }
+        // A module-qualified reference (`http:ACCEPTED`, `mod:CONST`) resolves in
+        // the imported module, which this single-file linter does not load.
+        if let Some((module, _)) = name.split_once(':') {
+            if self.imports.contains(module) {
+                return Type::Unknown(name.to_string());
+            }
+        }
         // `self` (enclosing object), `commit` (transaction action), and builtin
         // type names used as `typedesc` values are always available.
         if name == "self"
@@ -1387,6 +1422,73 @@ impl Analyzer {
             .push(Diagnostic::new(DiagnosticKind::Semantic, message, span));
     }
 
+    /// Analyses the members of a class, service, or object constructor.
+    ///
+    /// Fields are bound first so that methods may reference them in any order,
+    /// then each method body is checked inside that scope. Field *types* are
+    /// recorded, but resolving `self.x` to a specific field is deferred (see
+    /// `docs/SEMANTIC_PLAN.md` §F) — `self` stays `Unknown`, so field accesses
+    /// through it are accepted without being verified.
+    fn check_object_body(&mut self, members: &[Stmt]) {
+        self.scopes.push(HashMap::new());
+
+        // Pass 1: bind fields, and collect method names so intra-object calls
+        // resolve regardless of declaration order.
+        let mut object_methods = Vec::new();
+        for member in members {
+            match member {
+                Stmt::VarDecl {
+                    name,
+                    name_span,
+                    type_annotation,
+                    ..
+                } => {
+                    let ty = type_annotation
+                        .as_ref()
+                        .map(|t| self.type_from_annotation(t))
+                        .unwrap_or(Type::Unknown("field".to_string()));
+                    self.current_scope_mut().insert(
+                        name.clone(),
+                        Symbol {
+                            ty,
+                            is_final: false,
+                            is_const: false,
+                            initialized: true,
+                            declared_span: name_span.clone(),
+                        },
+                    );
+                }
+                Stmt::Function { name, .. } => object_methods.push(name.clone()),
+                _ => {}
+            }
+        }
+        let previously_known: Vec<String> = object_methods
+            .iter()
+            .filter(|n| self.functions.insert((*n).clone()))
+            .cloned()
+            .collect();
+
+        // Pass 2: check field initialisers and method bodies. Fields are only
+        // *checked* here — they were already bound in pass 1, so re-running the
+        // VarDecl arm would report them as redeclarations.
+        for member in members {
+            match member {
+                Stmt::VarDecl { initializer, .. } => {
+                    if let Some(init) = initializer {
+                        self.check_expr(init);
+                    }
+                }
+                other => self.check_stmt(other),
+            }
+        }
+
+        // Method names are object-scoped; do not leak them to the module.
+        for name in previously_known {
+            self.functions.remove(&name);
+        }
+        self.scopes.pop();
+    }
+
     /// Executes a closure with a new scope pushed on the stack.
     fn with_scope<F>(&mut self, mut f: F)
     where
@@ -1398,6 +1500,11 @@ impl Analyzer {
     }
 
     /// Collects function names ahead of time so undefined call targets can be reported.
+    /// Collects function names ahead of time so forward references resolve.
+    ///
+    /// Recurses through every block-bearing statement. Class and service members
+    /// are deliberately excluded: their methods are object-scoped and are bound
+    /// by `check_object_body`, not visible as module-level functions.
     fn collect_functions(&mut self, stmts: &[Stmt]) {
         for stmt in stmts {
             match stmt {
@@ -1413,6 +1520,24 @@ impl Analyzer {
                     self.collect_functions(then_branch);
                     if let Some(else_branch) = else_branch {
                         self.collect_functions(else_branch);
+                    }
+                }
+                Stmt::While { body, .. }
+                | Stmt::Foreach { body, .. }
+                | Stmt::Block { body, .. }
+                | Stmt::Lock { body, .. }
+                | Stmt::Transaction { body, .. }
+                | Stmt::Retry { body, .. }
+                | Stmt::Worker { body, .. } => self.collect_functions(body),
+                Stmt::DoOnFail {
+                    body, on_fail_body, ..
+                } => {
+                    self.collect_functions(body);
+                    self.collect_functions(on_fail_body);
+                }
+                Stmt::Match { arms, .. } => {
+                    for arm in arms {
+                        self.collect_functions(&arm.body);
                     }
                 }
                 _ => {}
