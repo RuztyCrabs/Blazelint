@@ -10,16 +10,21 @@
 #   like-for-like at the rule level.
 #
 # WHAT REMAINS DIFFERENT — read before quoting a speedup
-#   1. `bal scan` compiles the package first: full type checking, symbol
-#      resolution, and cross-file analysis. Blazelint lexes, parses, and runs a
-#      deliberately shallow single-file semantic pass. Scan therefore does
-#      strictly more work, and finds errors Blazelint cannot.
-#   2. `bal scan` pays JVM startup on every invocation. This script reports it
-#      separately so it can be excluded or included knowingly.
-#   3. Scan operates on a package; Blazelint on a file at a time.
+#   1. Both tools type-check; Blazelint's pass is shallower. On a four-error
+#      sample the compiler caught all four and Blazelint three, missing only a
+#      record *field* type — field types, lang-library method signatures, and
+#      cross-file symbols resolve to Unknown here. Type checking is ~12% of
+#      Blazelint's runtime, so it is real work, not a step being skipped.
+#   2. Neither benchmarked rule needs type information: `checkpanic` detection is
+#      syntactic and unused-parameter is scope-based. `bal scan` still compiles
+#      the whole package, because it runs as a compiler plugin. That is an
+#      architectural cost of their design, not work the rules require — and it
+#      is also what gives their other rules type information for free.
+#   3. `bal scan` pays JVM startup on every invocation, reported separately below.
+#   4. Scan operates on a package; Blazelint on a file at a time.
 #
-#   The defensible claim from this harness is about *whole-tool wall-clock for an
-#   equivalent rule set*, not about rule-engine throughput in isolation.
+#   The defensible claim is whole-tool wall-clock for an equivalent rule set,
+#   with the caveat that Blazelint's type checking is shallower.
 #
 # Usage: scripts/benchmark_vs_scan.sh [runs]   (default 3)
 set -uo pipefail
@@ -129,5 +134,7 @@ if [ "$BLZ_MS" -gt 0 ]; then
     echo "  excluding JVM startup .... $(( (SCAN - JVM) / BLZ_MS ))x"
 fi
 echo
-echo "Caveat: scan type-checks the whole package; blazelint does not."
-echo "See the header of this script before quoting either number."
+echo "Caveat: both tools type-check, but Blazelint's pass is shallower (it"
+echo "misses record field types, lang-lib signatures, and cross-file symbols)."
+echo "Neither benchmarked rule needs type information; scan compiles the package"
+echo "anyway because it runs as a compiler plugin. See this script's header."
