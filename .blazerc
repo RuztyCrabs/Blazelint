@@ -8,6 +8,7 @@ missing-return = "error"
 # Official bal scan rules
 avoid-checkpanic = "warn"
 self-assignment = "warn"
+invalid-range = "warn"
 unused-variables = "error"
 
 [settings]

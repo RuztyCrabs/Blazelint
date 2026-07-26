@@ -166,10 +166,14 @@ pub enum Expr {
         default: Box<Expr>,
         span: Span,
     },
-    /// Range expression (start...end).
+    /// Range expression: `start...end` when `inclusive`, `start..<end` when not.
+    ///
+    /// The distinction matters: `1..<1` is a legitimate empty range, whereas
+    /// `1...0` cannot iterate and is almost certainly a mistake.
     Range {
         start: Box<Expr>,
         end: Box<Expr>,
+        inclusive: bool,
         span: Span,
     },
     /// Cast expression (<type>expr).

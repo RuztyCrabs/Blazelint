@@ -1784,11 +1784,13 @@ impl Parser {
     fn range_expr(&mut self) -> ParseResult<Expr> {
         let start_expr = self.logic_or()?;
         if self.match_token(&[Token::DotDotDot, Token::DotDotLt])? {
+            let inclusive = matches!(self.previous(), Some(Token::DotDotDot));
             let end_expr = self.logic_or()?;
             let span = start_expr.span().start..end_expr.span().end;
             Ok(Expr::Range {
                 start: Box::new(start_expr),
                 end: Box::new(end_expr),
+                inclusive,
                 span,
             })
         } else {
