@@ -1168,7 +1168,7 @@ impl Parser {
     /// Parses a `function` declaration including parameters, optional return type,
     /// and body. Leading qualifiers (`public`/`isolated`/...) are consumed by the
     /// caller and passed in.
-    fn function(&mut self, is_public: bool, _qualifiers: Vec<String>) -> ParseResult<Stmt> {
+    fn function(&mut self, is_public: bool, qualifiers: Vec<String>) -> ParseResult<Stmt> {
         self.advance()?; // consume 'function'
         let keyword_span = self.previous_span();
         let name_token = self.advance_owned()?;
@@ -1196,6 +1196,7 @@ impl Parser {
         let body_end_span = self.previous_span();
         Ok(Stmt::Function {
             is_public,
+            qualifiers,
             name,
             name_span,
             params,
@@ -1378,27 +1379,43 @@ impl Parser {
     fn class_member(&mut self) -> ParseResult<Option<Stmt>> {
         // Annotations may precede a class/service member.
         self.skip_annotations()?;
-        // Skip member qualifiers (public/private/final/isolated/remote/resource/...).
+        // Collect member qualifiers (public/private/final/isolated/remote/...).
         let mut is_resource = false;
+        let mut is_public = false;
+        let mut quals: Vec<String> = Vec::new();
         loop {
-            if self.match_token(&[Token::Public, Token::Final, Token::Isolated])? {
+            if self.match_token(&[Token::Public])? {
+                is_public = true;
+                quals.push("public".to_string());
+                continue;
+            }
+            if self.match_token(&[Token::Isolated])? {
+                quals.push("isolated".to_string());
+                continue;
+            }
+            if self.match_token(&[Token::Final])? {
+                quals.push("final".to_string());
                 continue;
             }
             // `readonly` as a member qualifier, but not `readonly & T` (a type).
             if self.check_ctx_kw("readonly") && !matches!(self.peek_n(1), Some(Token::Amp)) {
                 self.advance()?;
+                quals.push("readonly".to_string());
                 continue;
             }
             if self.check_ctx_kw("resource") {
                 is_resource = true;
                 self.advance()?;
+                quals.push("resource".to_string());
                 continue;
             }
             if matches!(
                 self.peek(),
                 Some(Token::Identifier(s)) if matches!(s.as_str(), "private" | "remote" | "transactional")
             ) {
-                self.advance()?;
+                if let Token::Identifier(q) = self.advance_owned()? {
+                    quals.push(q);
+                }
                 continue;
             }
             break;
@@ -1449,7 +1466,8 @@ impl Parser {
             };
             let end = self.previous_span().end;
             return Ok(Some(Stmt::Function {
-                is_public: false,
+                is_public,
+                qualifiers: quals,
                 name,
                 name_span,
                 params,
