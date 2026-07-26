@@ -170,6 +170,17 @@ pub enum Expr {
         arguments: Vec<Expr>,
         span: Span,
     },
+    /// A named argument in a call: `f(name = value)`.
+    ///
+    /// This is deliberately distinct from `Assign`: the name identifies a
+    /// parameter of the callee, not a variable in the enclosing scope, so it
+    /// must not be resolved against the scope stack.
+    NamedArg {
+        name: String,
+        name_span: Span,
+        value: Box<Expr>,
+        span: Span,
+    },
     /// Check/error-handling prefix expression: `check e`, `checkpanic e`,
     /// `trap e`. The keyword is retained for later semantic differentiation.
     Check {
@@ -288,6 +299,7 @@ impl Expr {
             | Expr::Range { span, .. }
             | Expr::Cast { span, .. }
             | Expr::New { span, .. }
+            | Expr::NamedArg { span, .. }
             | Expr::Check { span, .. }
             | Expr::TypeOf { span, .. }
             | Expr::StringTemplate { span, .. }

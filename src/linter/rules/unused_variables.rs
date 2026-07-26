@@ -345,6 +345,9 @@ impl<'a> UnusedVariableVisitor<'a> {
             Expr::Check { expr, .. } | Expr::TypeOf { expr, .. } | Expr::TypeTest { expr, .. } => {
                 self.visit_expr(expr)
             }
+            // Only the value counts as a reference; the name is a parameter of
+            // the callee, not a variable in scope.
+            Expr::NamedArg { value, .. } => self.visit_expr(value),
             Expr::StringTemplate { interpolations, .. } => {
                 for interp in interpolations {
                     self.visit_expr(interp);

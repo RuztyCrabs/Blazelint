@@ -150,6 +150,36 @@ fn realworld_combined_program_parses_clean() {
     assert!(output.status.success());
 }
 
+#[test]
+fn named_arguments_are_not_undeclared_variables() {
+    // A named argument names a parameter of the callee, not a variable in the
+    // caller's scope. Regression for the single largest source of false
+    // positives on real code (docs/SEMANTIC_PLAN.md §A).
+    let code = "import ballerina/io;\n\
+                function g(int a, int b) returns int { return a + b; }\n\
+                public function main() {\n\
+                    int r = g(a = 1, b = 2);\n\
+                    io:println(r);\n\
+                }\n";
+    let (output, _file_path) = run_cli(code);
+    let out = stdout(&output);
+    assert!(
+        !out.contains("Error:"),
+        "named arguments should not produce diagnostics, got:\n{out}"
+    );
+    assert!(output.status.success());
+
+    // The argument's *value* is still analysed.
+    let bad = "function g(int a) returns int { return a; }\n\
+               public function main() { int r = g(a = undeclaredThing); }\n";
+    let (_output, _file_path) = run_cli(bad);
+    let out = stdout(&_output);
+    assert!(
+        out.contains("Use of undeclared variable 'undeclaredThing'"),
+        "named-argument values must still be checked, got:\n{out}"
+    );
+}
+
 // ============================================================================
 // LEXER TESTS
 // ============================================================================
