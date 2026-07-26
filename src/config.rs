@@ -148,9 +148,12 @@ impl Default for Config {
         rules.insert("camel-case".to_string(), RuleSeverity::Error);
         rules.insert("constant-case".to_string(), RuleSeverity::Warn);
         rules.insert("line-length".to_string(), RuleSeverity::Error);
-        rules.insert("snake-case".to_string(), RuleSeverity::Warn);
         rules.insert("unused-variables".to_string(), RuleSeverity::Warn);
+        // Off by default: a parameter is part of a signature, so callbacks and
+        // overridden methods cannot drop one even when the body ignores it.
+        rules.insert("unused-parameters".to_string(), RuleSeverity::Off);
         rules.insert("missing-return".to_string(), RuleSeverity::Error);
+        rules.insert("max-function-length".to_string(), RuleSeverity::Warn);
 
         Self {
             rules,

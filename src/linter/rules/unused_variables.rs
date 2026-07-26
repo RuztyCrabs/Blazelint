@@ -36,10 +36,50 @@ impl LintRule for UnusedVariablesRule {
         line_tracker: &crate::utils::LineTracker,
     ) -> Vec<Diagnostic> {
         let severity = self.severity(config);
-        let mut visitor = UnusedVariableVisitor::new(source, severity, line_tracker);
+        let mut visitor = UnusedVariableVisitor::new(source, severity, line_tracker, false);
         visitor.visit_stmts(ast);
         visitor.exit_scope(); // Exit the global scope
         visitor.diagnostics
+    }
+}
+
+/// A rule that detects unused function parameters.
+///
+/// Separate from `unused-variables` and disabled by default: a parameter is
+/// part of a signature, so a callback, a resource method, or an overridden
+/// method cannot drop one even when its body ignores it. Enable it for code
+/// where every signature is under your control.
+pub struct UnusedParametersRule;
+
+impl LintRule for UnusedParametersRule {
+    fn name(&self) -> &'static str {
+        "unused-parameters"
+    }
+
+    fn description(&self) -> &'static str {
+        "Detects function parameters that are never used."
+    }
+
+    fn check(
+        &self,
+        ast: &[Stmt],
+        _file_path: &str,
+        source: &str,
+        config: &Config,
+        line_tracker: &crate::utils::LineTracker,
+    ) -> Vec<Diagnostic> {
+        let severity = self.severity(config);
+        let mut visitor = UnusedVariableVisitor::new(source, severity, line_tracker, true);
+        visitor.visit_stmts(ast);
+        visitor.exit_scope();
+        visitor
+            .diagnostics
+            .into_iter()
+            .map(|mut d| {
+                d.message = d.message.replace("Variable ", "Parameter ");
+                d
+            })
+            .collect()
     }
 }
 
@@ -50,6 +90,10 @@ struct VariableInfo {
     declaration_span: Range<usize>,
     /// Whether the variable was used.
     used: bool,
+    /// Whether this is a function parameter rather than a local. Parameters are
+    /// part of a signature — a callback or overridden method cannot drop one —
+    /// so they are tracked separately from locals.
+    is_param: bool,
 }
 
 /// Visitor that traverses the AST to track variable usage and collect diagnostics for unused variables.
@@ -61,6 +105,8 @@ struct UnusedVariableVisitor<'a> {
     _source: &'a str,
     severity: Severity,
     line_tracker: &'a crate::utils::LineTracker,
+    /// Which kind of binding this run reports: locals, or parameters.
+    report_params: bool,
 }
 
 impl<'a> UnusedVariableVisitor<'a> {
@@ -69,6 +115,7 @@ impl<'a> UnusedVariableVisitor<'a> {
         source: &'a str,
         severity: Severity,
         line_tracker: &'a crate::utils::LineTracker,
+        report_params: bool,
     ) -> Self {
         Self {
             scopes: vec![HashMap::new()],
@@ -76,6 +123,7 @@ impl<'a> UnusedVariableVisitor<'a> {
             _source: source,
             severity,
             line_tracker,
+            report_params,
         }
     }
 
@@ -88,6 +136,9 @@ impl<'a> UnusedVariableVisitor<'a> {
     fn exit_scope(&mut self) {
         if let Some(scope) = self.scopes.pop() {
             for (name, info) in scope {
+                if info.is_param != self.report_params {
+                    continue;
+                }
                 if !info.used && !name.starts_with('_') {
                     self.diagnostics.push(Diagnostic::new_tracked(
                         DiagnosticKind::Linter,
@@ -101,14 +152,24 @@ impl<'a> UnusedVariableVisitor<'a> {
         }
     }
 
-    /// Declares a new variable in the current scope.
+    /// Declares a local variable in the current scope.
     fn declare_variable(&mut self, name: String, span: Range<usize>) {
+        self.declare(name, span, false);
+    }
+
+    /// Declares a function parameter in the current scope.
+    fn declare_param(&mut self, name: String, span: Range<usize>) {
+        self.declare(name, span, true);
+    }
+
+    fn declare(&mut self, name: String, span: Range<usize>, is_param: bool) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(
                 name,
                 VariableInfo {
                     declaration_span: span,
                     used: false,
+                    is_param,
                 },
             );
         }
@@ -154,7 +215,7 @@ impl<'a> UnusedVariableVisitor<'a> {
                 self.enter_scope();
                 for (name, _) in params {
                     // FIXME: We don't have a span for the parameter name
-                    self.declare_variable(name.clone(), name_span.clone());
+                    self.declare_param(name.clone(), name_span.clone());
                 }
                 self.visit_stmts(body);
                 self.exit_scope();
