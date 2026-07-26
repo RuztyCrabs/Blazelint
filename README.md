@@ -51,7 +51,9 @@ Followings are the benchmarks we achieved using the release version 0.3.0:
 
 ### Notes on Benchmark Context
 
-- **Grammar Coverage**: Blazelint implements approximately 90% of the Ballerina grammar (see [`docs/BNF.md`](docs/BNF.md)), covering type descriptors (records, objects, tuples, generics, unions/intersections), module-level declarations (`type`, `enum`, `class`, `service`, `configurable`), error handling (`check`/`checkpanic`/`trap`), closures and arrow functions, control flow (`match`, `do`/`on fail`, `lock`, `transaction`), and query expressions. New constructs are parse-tolerant: they are accepted into the AST, with deep semantic type-checking deferred. The performance benchmarks above predate this expansion.
+- **Grammar Coverage**: Blazelint parses **98% of the official "Ballerina by Example" corpus** without grammar errors (160/163 sampled files), covering type descriptors (records, objects, tuples, generics, unions/intersections), module-level declarations (`type`, `enum`, `class`, `service`, `configurable`), error handling (`check`/`checkpanic`/`trap`), closures and arrow functions, control flow (`match`, `do`/`on fail`, `lock`, `transaction`), query expressions, and client/worker actions. See [`docs/BNF.md`](docs/BNF.md) for the grammar. Reproduce the measurement with `bash scripts/grammar_coverage.sh`.
+
+  Semantic analysis is deliberately shallower than the parser: new constructs are *parse-tolerant*, accepted into the AST with deep type-checking deferred, so the linter does not reject valid programs. The performance benchmarks above predate this expansion.
 - **Lexer Scalability**: The lexer uses a switch-case dispatch mechanism, ensuring constant time complexity per character. Adding new lexemes will not significantly impact performance.
 - **Parser Scalability**: Uses a recursive descent parser is designed for modular expansion. While adding new grammar rules increases the depth of recursive calls, the architecture supports efficient scaling with minimal overhead for additional rules.
 
