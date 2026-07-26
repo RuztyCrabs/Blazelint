@@ -464,6 +464,9 @@ pub enum Stmt {
     /// A function declaration statement.
     Function {
         is_public: bool,
+        /// Declaration qualifiers other than visibility — `isolated`,
+        /// `transactional`, `remote`, `resource`, and so on.
+        qualifiers: Vec<String>,
         name: String,
         name_span: Span,
         params: Vec<(String, TypeDescriptor)>,

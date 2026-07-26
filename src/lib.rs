@@ -14,7 +14,8 @@ use errors::{Diagnostic, Severity};
 use lexer::Lexer;
 use linter::registry::LintRuleRegistry;
 use linter::rules::{
-    AvoidCheckpanicRule, CamelCaseRule, ConstantCaseRule, InvalidRangeRule, LineLengthRule,
+    AvoidCheckpanicRule, CamelCaseRule, ConstantCaseRule, InvalidRangeRule,
+    IsolatedPublicClassRule, IsolatedPublicFunctionRule, IsolatedPublicMethodRule, LineLengthRule,
     MaxFunctionLengthRule, MissingReturnRule, SelfAssignmentRule, UnusedParametersRule,
     UnusedVariablesRule,
 };
@@ -74,6 +75,9 @@ pub fn run() {
         registry.register(Box::new(AvoidCheckpanicRule));
         registry.register(Box::new(SelfAssignmentRule));
         registry.register(Box::new(InvalidRangeRule));
+        registry.register(Box::new(IsolatedPublicFunctionRule));
+        registry.register(Box::new(IsolatedPublicMethodRule));
+        registry.register(Box::new(IsolatedPublicClassRule));
         registry
     };
 

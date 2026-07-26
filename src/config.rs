@@ -159,6 +159,12 @@ impl Default for Config {
         rules.insert("self-assignment".to_string(), RuleSeverity::Warn);
         // Official scan rule ballerina:12.
         rules.insert("invalid-range".to_string(), RuleSeverity::Warn);
+        // Official scan rules ballerina:3, :4, :5. Off by default: advisory
+        // concurrency guidance that would fire on most public declarations in
+        // code that does no concurrent work.
+        rules.insert("isolated-public-function".to_string(), RuleSeverity::Off);
+        rules.insert("isolated-public-method".to_string(), RuleSeverity::Off);
+        rules.insert("isolated-public-class".to_string(), RuleSeverity::Off);
         rules.insert("max-function-length".to_string(), RuleSeverity::Warn);
 
         Self {
