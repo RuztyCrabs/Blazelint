@@ -857,6 +857,11 @@ impl Analyzer {
                                 self.check_expr(key);
                             }
                         }
+                        QueryClause::Do(body) => {
+                            for stmt in body {
+                                self.check_stmt(stmt);
+                            }
+                        }
                         QueryClause::Other => {}
                     }
                 }
@@ -873,6 +878,8 @@ impl Analyzer {
                 self.check_expr(call);
                 Type::Unknown("future".to_string())
             }
+            // Object-constructor members are not deeply analyzed (deferred).
+            Expr::ObjectConstructor { .. } => Type::Unknown("object".to_string()),
         }
     }
 

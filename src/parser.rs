@@ -148,6 +148,7 @@ impl Parser {
         {
             return true;
         }
+        // Untyped list `[a, b] =` or mapping `{a, b} =` destructure.
         if self.check(&Token::LBracket) {
             if let Some(end) = self.scan_balanced(0, &Token::LBracket, &Token::RBracket) {
                 if matches!(self.peek_n(end), Some(Token::Eq)) {
@@ -155,6 +156,14 @@ impl Parser {
                 }
             }
         }
+        if self.check(&Token::LBrace) {
+            if let Some(end) = self.scan_balanced(0, &Token::LBrace, &Token::RBrace) {
+                if matches!(self.peek_n(end), Some(Token::Eq)) {
+                    return true;
+                }
+            }
+        }
+        // Typed mapping destructure `<name> {a, b} = ...`.
         if matches!(self.peek(), Some(Token::Identifier(_))) {
             if let Some(end) = self.skip_type(0) {
                 if matches!(self.peek_n(end), Some(Token::LBrace)) {
@@ -291,6 +300,10 @@ impl Parser {
                 qualifiers.push("public".to_string());
             } else if self.match_token(&[Token::Isolated])? {
                 qualifiers.push("isolated".to_string());
+            } else if self.check_ctx_kw("transactional") || self.check_ctx_kw("client") {
+                if let Token::Identifier(s) = self.advance_owned()? {
+                    qualifiers.push(s);
+                }
             } else {
                 break;
             }
@@ -1033,6 +1046,7 @@ impl Parser {
         let mut params = Vec::new();
         while !self.check(&Token::RParen) {
             self.skip_annotations()?; // e.g. `@http:Payload T body`
+            self.match_token(&[Token::Star])?; // included-record parameter `*T name`
             let param_type = self.parse_type_descriptor()?;
             self.match_token(&[Token::DotDotDot])?; // optional rest marker
             let param_name = self.expect_ident("Expected parameter name")?;
@@ -1580,13 +1594,15 @@ impl Parser {
     fn equality(&mut self) -> ParseResult<Expr> {
         let mut expr = self.comparison()?;
 
-        while self.match_token(&[Token::EqEq, Token::BangEq])? {
+        while self.match_token(&[Token::EqEq, Token::BangEq, Token::EqEqEq, Token::BangEqEq])? {
             let op_token = self.previous().cloned().expect("operator token");
             let op_span = self.previous_span();
             let right = self.comparison()?;
             let op = match op_token {
                 Token::EqEq => BinaryOp::EqualEqual,
                 Token::BangEq => BinaryOp::NotEqual,
+                Token::EqEqEq => BinaryOp::EqualEqualEqual,
+                Token::BangEqEq => BinaryOp::NotEqualEqual,
                 _ => unreachable!(),
             };
             expr = self.make_binary_expr(expr, op, op_span, right);
@@ -1862,8 +1878,12 @@ impl Parser {
                     span,
                 };
             } else if self.match_token(&[Token::LBracket])? {
-                // Array/map access: obj[index]
+                // Member access `obj[index]`; multi-key access `t["a", "b"]` keeps
+                // the first key as the representative member.
                 let index = self.expression()?;
+                while self.match_token(&[Token::Comma])? {
+                    let _ = self.expression()?;
+                }
                 self.consume(Token::RBracket, "Expected ']' after index", Some("']'"))?;
                 let close_span = self.previous_span();
                 let span = expr.span().start..close_span.end;
@@ -1953,6 +1973,7 @@ impl Parser {
         let mut arguments = Vec::new();
         if !self.check(&Token::RParen) {
             loop {
+                self.match_token(&[Token::DotDotDot])?; // spread argument `...expr`
                 arguments.push(self.expression()?);
                 if !self.match_token(&[Token::Comma])? {
                     break;
@@ -2137,6 +2158,12 @@ impl Parser {
                 // `collect <expr>` is a terminal clause (like select).
                 clauses.push(QueryClause::Select(self.expression()?));
                 break;
+            } else if self.check(&Token::Do) {
+                // `do { ... }` query action clause (terminal).
+                self.advance()?; // 'do'
+                let body = self.braced_block()?;
+                clauses.push(QueryClause::Do(body));
+                break;
             } else {
                 break;
             }
@@ -2312,6 +2339,32 @@ impl Parser {
         })
     }
 
+    /// Parses an object-constructor expression, e.g. `service object { ... }`.
+    /// Qualifiers and an optional `:Type` are consumed; the body is parsed into
+    /// members so method bodies are reachable.
+    fn object_constructor(&mut self) -> ParseResult<Expr> {
+        let start = self.current_span().start;
+        // Qualifiers before `object`.
+        while self.match_token(&[Token::Isolated])?
+            || matches!(self.peek(), Some(Token::Identifier(s)) if matches!(s.as_str(), "service" | "client"))
+        {
+            if matches!(self.peek(), Some(Token::Identifier(_))) {
+                self.advance()?;
+            }
+        }
+        self.consume(Token::Object, "Expected 'object'", Some("'object'"))?;
+        // Optional `:TypeReference`.
+        if self.match_token(&[Token::Colon])? {
+            let _ = self.parse_type_descriptor()?;
+        }
+        let members = self.braced_block_of_members()?;
+        let end = self.previous_span().end;
+        Ok(Expr::ObjectConstructor {
+            members,
+            span: start..end,
+        })
+    }
+
     /// Parses a `start <function-call>` action expression.
     fn start_action(&mut self) -> ParseResult<Expr> {
         self.match_ctx_kw("start")?;
@@ -2385,6 +2438,14 @@ impl Parser {
         // `start` action expression.
         if self.check_ctx_kw("start") {
             return self.start_action();
+        }
+        // Object constructor expression: `[service|client|isolated] object [:T] {..}`.
+        if self.check(&Token::Object)
+            || (self.check(&Token::Isolated) && matches!(self.peek_n(1), Some(Token::Object)))
+            || (matches!(self.peek(), Some(Token::Identifier(s)) if matches!(s.as_str(), "service" | "client"))
+                && matches!(self.peek_n(1), Some(Token::Object | Token::Isolated)))
+        {
+            return self.object_constructor();
         }
 
         let token = self.advance_owned()?;
@@ -2696,6 +2757,15 @@ impl Parser {
         // Annotations may prefix a type in return/parameter/field position, e.g.
         // `returns @http:Cache Payload` — skip them.
         self.skip_annotations()?;
+        // Type-level qualifiers that precede object/function types
+        // (`isolated function`, `service object`, `client object`, `readonly`).
+        while self.match_token(&[Token::Isolated])?
+            || matches!(self.peek(), Some(Token::Identifier(s)) if matches!(s.as_str(), "service" | "client" | "transactional"))
+        {
+            if matches!(self.peek(), Some(Token::Identifier(_))) {
+                self.advance()?;
+            }
+        }
         // map<T>
         if self.match_token(&[Token::Map])? {
             self.consume(Token::Lt, "Expected '<' after 'map'", Some("'<'"))?;
@@ -2830,10 +2900,17 @@ impl Parser {
         let mut params = Vec::new();
         if self.match_token(&[Token::LParen])? {
             while !self.check(&Token::RParen) {
+                self.skip_annotations()?;
+                self.match_token(&[Token::Public])?; // rare visibility qualifier
                 let param_type = self.parse_type_descriptor()?;
-                // Optional parameter name.
+                self.match_token(&[Token::DotDotDot])?; // rest param marker
+                                                        // Optional parameter name.
                 if matches!(self.peek(), Some(Token::Identifier(_))) {
                     self.advance()?;
+                }
+                // Optional default value `= expr`.
+                if self.match_token(&[Token::Eq])? {
+                    let _ = self.expression()?;
                 }
                 params.push(param_type);
                 if !self.match_token(&[Token::Comma])? {
@@ -3356,10 +3433,10 @@ impl Parser {
         match self.peek() {
             Some(Token::Var) | Some(Token::Final) | Some(Token::Const) => true,
             Some(Token::LBracket) => {
-                // Tuple-typed binding `[T1, T2] name` vs an array-literal
-                // expression statement `[1, 2]...`: only the former is followed by
-                // an identifier after the matching `]`.
-                self.scan_balanced(0, &Token::LBracket, &Token::RBracket)
+                // Tuple-typed binding `[T1, T2][] name` vs an array-literal
+                // expression statement `[1, 2]...`: only the former is a type
+                // (possibly with array/optional suffixes) followed by an identifier.
+                self.skip_type(0)
                     .is_some_and(|end| matches!(self.peek_n(end), Some(Token::Identifier(_))))
             }
             Some(token)
@@ -3409,6 +3486,10 @@ impl Parser {
                 } else {
                     return None;
                 }
+            }
+            // Tuple type `[T1, T2, ...]`.
+            Token::LBracket => {
+                offset = self.scan_balanced(offset, &Token::LBracket, &Token::RBracket)?;
             }
             _ => return None,
         }

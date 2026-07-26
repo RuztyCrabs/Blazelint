@@ -404,6 +404,7 @@ impl<'a> UnusedVariableVisitor<'a> {
                                 self.visit_expr(key);
                             }
                         }
+                        QueryClause::Do(body) => self.visit_stmts(body),
                         QueryClause::Other => {}
                     }
                 }
@@ -415,6 +416,13 @@ impl<'a> UnusedVariableVisitor<'a> {
                 }
             }
             Expr::Start { call, .. } => self.visit_expr(call),
+            Expr::ObjectConstructor { members, .. } => {
+                for member in members {
+                    if let Stmt::Function { .. } = member {
+                        self.visit_stmt(member);
+                    }
+                }
+            }
             Expr::Literal { .. } => {}
         }
     }

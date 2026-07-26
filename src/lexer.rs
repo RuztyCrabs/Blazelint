@@ -286,8 +286,28 @@ impl<'input> Lexer<'input> {
         Ok(Token::StringTemplate(template_value))
     }
 
-    /// Scans a numeric literal (integer, float, or float with exponent) into a token.
+    /// Scans a numeric literal: hex (`0x1F`), integer, float, float with
+    /// exponent, and an optional `d`/`f` type suffix.
     fn number(&mut self) -> Result<Token, LexError> {
+        // Hexadecimal literal `0x...` / `0X...`.
+        if self.input.as_bytes().get(self.start) == Some(&b'0')
+            && matches!(self.peek(), Some(&'x') | Some(&'X'))
+        {
+            self.advance(); // consume 'x'
+            while self.peek().is_some_and(|&c| c.is_ascii_hexdigit()) {
+                self.advance();
+            }
+            let digits = &self.input[self.start + 2..self.current];
+            return i64::from_str_radix(digits, 16)
+                .map(|v| Token::Number(v as f64))
+                .map_err(|e| {
+                    LexError::new(
+                        format!("Invalid hex literal '0x{digits}': {e}"),
+                        self.start..self.current,
+                    )
+                });
+        }
+
         while self.peek().is_some_and(|&c| c.is_ascii_digit()) {
             self.advance();
         }
@@ -318,7 +338,15 @@ impl<'input> Lexer<'input> {
             }
         }
 
-        let value_str = &self.input[self.start..self.current];
+        // Capture the numeric text, then consume an optional `d`/`f` suffix
+        // (decimal/float), which is not part of the parsed value.
+        let value_str = self.input[self.start..self.current].to_string();
+        if self
+            .peek()
+            .is_some_and(|&c| matches!(c, 'd' | 'D' | 'f' | 'F'))
+        {
+            self.advance();
+        }
         value_str.parse::<f64>().map(Token::Number).map_err(|e| {
             LexError::new(
                 format!("Invalid number literal '{value_str}': {e}"),
