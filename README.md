@@ -29,25 +29,35 @@
 
 ## Benchmarks
 
-Followings are the benchmarks we achieved using the release version 0.3.0:
+### Versus the official `bal scan`
 
-### Execution Time Comparison
+Both tools run **the same two rules** — `ballerina:1` (avoid `checkpanic`) and
+`ballerina:2` (unused function parameter), which is the complete rule set of
+`bal scan` 0.5.0 — over a 40-file package, and **report identical findings**.
+Every other Blazelint rule is disabled so the comparison is like-for-like.
+Median of 3 runs; reproduce with `bash scripts/benchmark_vs_scan.sh`.
 
-| Tool              | Total Execution Time | Tokens/Second | Performance vs Blazelint |
-|-------------------|-----------------------|---------------|--------------------------|
-| **Blazelint**     | 284ms                | 2,290,000     | Baseline (1×)           |
-| **Ballerina Scan**| 8m 04.41s (484.41s)  | 1,341         | 1,705× slower           |
-| **ESLint**        | 3.6s                 | 188,900       | 12.7× slower            |
+| Tool | Time | vs Blazelint |
+|---|---:|---|
+| **`bal scan`** (total) | 1,703 ms | 30× slower |
+| &nbsp;&nbsp;↳ JVM startup | 966 ms | — |
+| &nbsp;&nbsp;↳ analysis only | 737 ms | 13× slower |
+| **Blazelint** (40 files) | **56 ms** | baseline |
+
+Note that **57% of `bal scan`'s runtime is JVM startup**, paid on every
+invocation — a structural cost that matters most for editor integration, where
+the tool runs constantly. The conservative, analysis-only figure is **13×**.
 
 ### Internal Performance Breakdown
 
-| Stage              | Execution Time | Percentage of Total | Tokens Processed |
-|--------------------|----------------|---------------------|------------------|
-| Lexical Analysis   | 80.75ms        | 26.9%              | 650,306          |
-| Parsing            | 187.90ms       | 62.6%              | 650,306          |
-| Semantic Analysis  | 22.87ms        | 7.6%               | 650,306          |
-| Linting Rules      | 8.87ms         | 3.0%               | 650,306          |
-| **Total**          | **300.39ms**   | **100.0%**         | **650,306**      |
+Per file, from `blazelint --detailed-timing` (~103 µs on a small module):
+
+| Stage | Percentage of Total |
+|--------------------|---------------------|
+| Parsing            | 65% |
+| Linting Rules      | 13% |
+| Semantic Analysis  | 12% |
+| Lexical Analysis   | 10% |
 
 ### Notes on Benchmark Context
 
@@ -55,13 +65,19 @@ Followings are the benchmarks we achieved using the release version 0.3.0:
 
 - **Validated against the official compiler**: `scripts/compare_with_ballerina.sh` runs the official Ballerina 2201.10.0 (Swan Lake, language spec 2024R1) compiler over the same corpus and compares verdicts. On the sampled files Blazelint produced **zero false positives** — it never rejected a program the official compiler accepts. The compiler does report errors Blazelint does not; those are cross-file/generated-symbol references and deep type-checking, both outside the scope of a single-file linter.
 
-  Semantic analysis is deliberately shallower than the parser: new constructs are *parse-tolerant*, accepted into the AST with deep type-checking deferred, so the linter does not reject valid programs. The performance benchmarks above predate this expansion.
+- **What the benchmark does and does not claim**: both tools type-check, but Blazelint's pass is shallower — on a four-error sample the compiler caught all four and Blazelint three, missing a record *field* type. Field types, lang-library method signatures, and cross-file symbols resolve to `Unknown`. Type checking is ~12% of Blazelint's runtime, so it is real work rather than a step being skipped.
+
+  Neither benchmarked rule needs type information at all: detecting `checkpanic` is syntactic, and unused-parameter is scope-based. `bal scan` compiles the whole package regardless, because it runs as a compiler plugin — an architectural cost of that design, and equally the reason its other rules get type information for free.
+
+  Semantic analysis is deliberately shallower than the parser: new constructs are *parse-tolerant*, accepted into the AST with deep type-checking deferred, so the linter does not reject valid programs.
 - **Lexer Scalability**: The lexer uses a switch-case dispatch mechanism, ensuring constant time complexity per character. Adding new lexemes will not significantly impact performance.
 - **Parser Scalability**: Uses a recursive descent parser is designed for modular expansion. While adding new grammar rules increases the depth of recursive calls, the architecture supports efficient scaling with minimal overhead for additional rules.
 
 ## Documentation
 
 *   [Grammar Coverage vs. the official spec](docs/GRAMMAR_COVERAGE.md)
+*   [Scan-rule parity plan](docs/SCAN_RULES_PLAN.md)
+*   [Semantic analysis plan](docs/SEMANTIC_PLAN.md)
 *   [Grammar in spec EBNF notation](docs/EBNF.md)
 *   [Grammar in BNF notation](docs/BNF.md)
 * [Software Requirement Specification (SRS)](https://github.com/RuztyCrabs/Blazelint/releases/latest/download/BlazeLint-SRS.pdf)
@@ -144,6 +160,15 @@ line-length = "warn"       # Limits line length
 max-function-length = "error"  # Limits function body length
 missing-return = "error"   # Ensures functions have return statements
 unused-variables = "warn"  # Detects unused variable declarations
+
+# Official `bal scan` rules
+avoid-checkpanic = "warn"          # ballerina:1
+unused-parameters = "off"          # ballerina:2 (off: signatures often cannot drop a param)
+self-assignment = "warn"           # ballerina:10
+invalid-range = "warn"             # ballerina:12
+isolated-public-function = "off"   # ballerina:3 (advisory)
+isolated-public-method = "off"     # ballerina:4 (advisory)
+isolated-public-class = "off"      # ballerina:5 (advisory)
 
 # Disable specific rules
 some-rule = "off"
