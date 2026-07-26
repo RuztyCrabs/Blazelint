@@ -1465,10 +1465,20 @@ impl Analyzer {
             }
             TypeDescriptor::Optional(inner) => self.type_from_annotation(inner),
             TypeDescriptor::Union(types) => {
-                if !types.is_empty() {
-                    self.type_from_annotation(&types[0])
-                } else {
-                    Type::Unknown("union".to_string())
+                // Picking the first member would let `int|string x = "s"` be
+                // reported as a type error. Only a union whose members all resolve
+                // to the same type carries usable information; anything wider stays
+                // Unknown so downstream checks accept every valid member.
+                let mut distinct: Vec<Type> = Vec::new();
+                for ty in types {
+                    let resolved = self.type_from_annotation(ty);
+                    if !distinct.contains(&resolved) {
+                        distinct.push(resolved);
+                    }
+                }
+                match distinct.len() {
+                    1 => distinct.remove(0),
+                    _ => Type::Unknown("union".to_string()),
                 }
             }
             // Parse-tolerant, deferred-semantics types: represented but not fully

@@ -39,8 +39,14 @@ impl LintRule for SelfAssignmentRule {
                 Expr::Assign { name, value, .. } => {
                     matches!(value.as_ref(), Expr::Variable { name: v, .. } if v == name)
                 }
-                // `self.f = self.f`, `a[0] = a[0]`
-                Expr::MemberAssign { target, value, .. } => same_lvalue(target, value),
+                // `self.f = self.f`, `a[0] = a[0]`. A compound assignment such as
+                // `self.f += self.f` does change the value, so only plain `=` counts.
+                Expr::MemberAssign {
+                    target,
+                    value,
+                    op: None,
+                    ..
+                } => same_lvalue(target, value),
                 _ => false,
             };
             if redundant {
