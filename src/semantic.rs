@@ -164,7 +164,12 @@ impl Analyzer {
                 if let Some(expr) = initializer {
                     let expr_type = self.check_expr(expr);
                     if let Some(declared) = declared_type {
-                        if !Self::can_assign(&declared, &expr_type) {
+                        // A nilable declared type (`int?`) also accepts nil;
+                        // `Type` does not carry nil-ability, so consult the
+                        // original descriptor.
+                        let nil_ok = expr_type == Type::Nil
+                            && type_annotation.as_ref().is_some_and(|t| t.is_nilable());
+                        if !Self::can_assign(&declared, &expr_type) && !nil_ok {
                             self.report(
                                 expr.span().clone(),
                                 format!(
@@ -1268,15 +1273,27 @@ impl Analyzer {
 
     /// Determines whether two operands can participate in an equality comparison.
     fn can_compare(&self, left: &Type, right: &Type) -> bool {
-        matches!(
-            (left, right),
-            (Type::Int, Type::Int)
-                | (Type::Float, Type::Float)
-                | (Type::Boolean, Type::Boolean)
-                | (Type::String, Type::String)
-                | (Type::Int, Type::Float)
-                | (Type::Float, Type::Int)
-        )
+        // Anything unresolved compares: the linter cannot prove otherwise.
+        if left.is_unknown() || right.is_unknown() {
+            return true;
+        }
+        // Ballerina's `==` is deep equality, so any two values of the same type
+        // compare — including arrays, maps, and records.
+        if left == right {
+            return true;
+        }
+        match (left, right) {
+            // Containers compare when their element types do.
+            (Type::Array(l), Type::Array(r)) | (Type::Map(l), Type::Map(r)) => {
+                self.can_compare(l, r)
+            }
+            // Numeric widening.
+            (Type::Int, Type::Float) | (Type::Float, Type::Int) => true,
+            // Nil compares with anything nilable; nil-ability is not tracked in
+            // `Type` yet, so accept it rather than emit a false positive.
+            (Type::Nil, _) | (_, Type::Nil) => true,
+            _ => false,
+        }
     }
 
     /// Resolves an identifier reference, emitting diagnostics when undefined or uninitialised.
