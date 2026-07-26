@@ -153,6 +153,8 @@ impl Default for Config {
         // overridden methods cannot drop one even when the body ignores it.
         rules.insert("unused-parameters".to_string(), RuleSeverity::Off);
         rules.insert("missing-return".to_string(), RuleSeverity::Error);
+        // Official scan rule ballerina:1.
+        rules.insert("avoid-checkpanic".to_string(), RuleSeverity::Warn);
         rules.insert("max-function-length".to_string(), RuleSeverity::Warn);
 
         Self {

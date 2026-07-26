@@ -14,8 +14,8 @@ use errors::{Diagnostic, Severity};
 use lexer::Lexer;
 use linter::registry::LintRuleRegistry;
 use linter::rules::{
-    CamelCaseRule, ConstantCaseRule, LineLengthRule, MaxFunctionLengthRule, MissingReturnRule,
-    UnusedParametersRule, UnusedVariablesRule,
+    AvoidCheckpanicRule, CamelCaseRule, ConstantCaseRule, LineLengthRule, MaxFunctionLengthRule,
+    MissingReturnRule, UnusedParametersRule, UnusedVariablesRule,
 };
 use parser::Parser;
 use semantic::analyze;
@@ -70,6 +70,7 @@ pub fn run() {
         registry.register(Box::new(MissingReturnRule::new()));
         registry.register(Box::new(UnusedVariablesRule));
         registry.register(Box::new(UnusedParametersRule));
+        registry.register(Box::new(AvoidCheckpanicRule));
         registry
     };
 
