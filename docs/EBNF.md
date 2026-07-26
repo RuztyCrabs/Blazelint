@@ -14,6 +14,11 @@ A prose-oriented version of the same grammar is in [`BNF.md`](BNF.md).
 > **Deliberate deviations** are marked `(* … *)`. They exist because Blazelint is
 > a single-file linter, not a compiler: some sub-grammars are accepted but not
 > decomposed, since no lint rule inspects their internals.
+>
+> All 419 syntactic productions are accepted; **391 (93%)** are parsed into
+> structured AST nodes. The 28 opaque ones — object *type* bodies, annotation
+> declarations, `fork` bodies, and tagged/regex templates — are consumed as
+> balanced blocks and will not reject malformed content.
 
 ---
 

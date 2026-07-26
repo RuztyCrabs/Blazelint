@@ -9,10 +9,11 @@ The grammar Blazelint's parser implements, in the project's original BNF style.
 - Reference: [Ballerina Language Specification 2024R1](https://ballerina.io/spec/lang/2024R1/).
 
 > This file was historically titled *"BNF for the selected subset of Ballerina
-> Grammar"*. It is no longer a subset: all 419 syntactic productions of the
-> 2024R1 specification are implemented. A few sub-grammars are accepted without
-> being decomposed into AST nodes — those are marked `(* … *)` below and listed
-> in `GRAMMAR_COVERAGE.md` §3.
+> Grammar"*. It is no longer a subset: every one of the 419 syntactic
+> productions in the 2024R1 specification is accepted, and **391 (93%)** are
+> parsed into structured AST nodes. The remaining 28 are accepted as opaque
+> blocks without being decomposed — they are marked `(* … *)` below and listed
+> individually in [`GRAMMAR_COVERAGE.md`](GRAMMAR_COVERAGE.md) §3.
 
 ```bnf
 <program> ::= <import_declaration>* <module_level_declaration>*
