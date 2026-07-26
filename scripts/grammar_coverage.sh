@@ -15,7 +15,10 @@ CORPUS="${CORPUS_DIR:-target/grammar-corpus}"
 BIN="target/release/blazelint"
 
 # Diagnostics that indicate a grammar (parse/lex) gap rather than a semantic one.
-PARSE_ERROR_RE='Unexpected token|Unexpected character|Expected .* (after|before|in)|panic'
+# Anchored to the "Error:" message line so that neither file paths (which may
+# contain words like "panic") nor semantic messages (e.g. "expected int, found
+# string") are miscounted as parse failures.
+PARSE_ERROR_RE='^Error: (Unexpected token|Unexpected character|Unexpected end of input|Expected |Invalid assignment target|Unterminated|Malformed)'
 
 mkdir -p "$CORPUS"
 
@@ -47,10 +50,10 @@ total=0
 for f in "$CORPUS"/*.bal; do
     total=$((total + 1))
     out="$("$BIN" "$f" 2>&1 || true)"
-    if echo "$out" | grep -qiE "$PARSE_ERROR_RE"; then
+    if echo "$out" | grep -qE "$PARSE_ERROR_RE"; then
         {
             echo "### $(basename "$f")"
-            echo "$out" | grep -iE "$PARSE_ERROR_RE" | head -3
+            echo "$out" | grep -E "$PARSE_ERROR_RE" | head -3
         } >> "$CORPUS/failures.txt"
     else
         parse_clean=$((parse_clean + 1))
