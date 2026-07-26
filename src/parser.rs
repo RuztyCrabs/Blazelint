@@ -2068,7 +2068,7 @@ impl Parser {
                     self.consume_gt("Expected '>' after XML step name")?;
                     name
                 } else {
-                    self.expect_ident("Expected method or field name after '.'")?
+                    self.expect_member_name("Expected method or field name after '.'")?
                 };
 
                 if self.match_token(&[Token::LParen])? {
@@ -2148,7 +2148,7 @@ impl Parser {
                     // trailing `.accessor`; arguments (if any) follow.
                     self.parse_resource_path()?
                 } else {
-                    self.expect_ident("Expected remote method name after '->'")?
+                    self.expect_member_name("Expected remote method name after '->'")?
                 };
                 let mut arguments = Vec::new();
                 if self.match_token(&[Token::LParen])? {
@@ -3877,30 +3877,89 @@ impl Parser {
         }
     }
 
+    /// Returns the source text of a keyword token, if it is one.
+    ///
+    /// Keywords are ordinary names in positions the grammar keeps unambiguous —
+    /// after `.`, in a module path, as a record field — so those positions need
+    /// to recover the lexeme rather than reject the token.
+    fn keyword_lexeme(token: &Token) -> Option<&'static str> {
+        Some(match token {
+            Token::Import => "import",
+            Token::Public => "public",
+            Token::Final => "final",
+            Token::Var => "var",
+            Token::Function => "function",
+            Token::If => "if",
+            Token::Else => "else",
+            Token::While => "while",
+            Token::Foreach => "foreach",
+            Token::In => "in",
+            Token::Return => "return",
+            Token::Panic => "panic",
+            Token::Check => "check",
+            Token::Returns => "returns",
+            Token::Int => "int",
+            Token::String => "string",
+            Token::Boolean => "boolean",
+            Token::Float => "float",
+            Token::Decimal => "decimal",
+            Token::Byte => "byte",
+            Token::Anydata => "anydata",
+            Token::Map => "map",
+            Token::True => "true",
+            Token::False => "false",
+            Token::Const => "const",
+            Token::Break => "break",
+            Token::Continue => "continue",
+            Token::Is => "is",
+            Token::Record => "record",
+            Token::Object => "object",
+            Token::Type => "type",
+            Token::Enum => "enum",
+            Token::Class => "class",
+            Token::Configurable => "configurable",
+            Token::Isolated => "isolated",
+            Token::Xmlns => "xmlns",
+            Token::New => "new",
+            Token::Checkpanic => "checkpanic",
+            Token::Trap => "trap",
+            Token::Typeof => "typeof",
+            Token::Let => "let",
+            Token::Match => "match",
+            Token::Do => "do",
+            Token::On => "on",
+            Token::Fail => "fail",
+            Token::Lock => "lock",
+            Token::Fork => "fork",
+            Token::Transaction => "transaction",
+            Token::Retry => "retry",
+            Token::Rollback => "rollback",
+            Token::Commit => "commit",
+            Token::Worker => "worker",
+            Token::Wait => "wait",
+            _ => return None,
+        })
+    }
+
+    /// Consumes a member name after `.` or `->`. Lang-library methods are
+    /// frequently spelled with words that are keywords elsewhere (`.map()`,
+    /// `.filter()`, `.'start()`), so keyword tokens are accepted here.
+    fn expect_member_name(&mut self, msg: &str) -> ParseResult<String> {
+        let token = self.advance_owned()?;
+        match token {
+            Token::Identifier(name) => Ok(name),
+            ref t => match Self::keyword_lexeme(t) {
+                Some(text) => Ok(text.to_string()),
+                None => Err(self.error_previous(msg, Some("identifier"))),
+            },
+        }
+    }
+
     /// Consumes one segment of a module path. Segments may be spelled with
     /// words that are keywords elsewhere, as in `ballerina/lang.string` or
     /// `ballerina/lang.error`, so keyword tokens are accepted here by name.
     fn expect_module_segment(&mut self) -> ParseResult<String> {
-        let token = self.advance_owned()?;
-        let name = match token {
-            Token::Identifier(name) => name,
-            Token::Int => "int".to_string(),
-            Token::String => "string".to_string(),
-            Token::Boolean => "boolean".to_string(),
-            Token::Float => "float".to_string(),
-            Token::Decimal => "decimal".to_string(),
-            Token::Byte => "byte".to_string(),
-            Token::Map => "map".to_string(),
-            Token::Object => "object".to_string(),
-            Token::Function => "function".to_string(),
-            Token::Type => "type".to_string(),
-            Token::Transaction => "transaction".to_string(),
-            Token::Xmlns => "xmlns".to_string(),
-            _ => {
-                return Err(self.error_previous("Expected module path segment", Some("identifier")))
-            }
-        };
-        Ok(name)
+        self.expect_member_name("Expected module path segment")
     }
 
     /// Consumes the current token, requiring it to be an identifier or a string
