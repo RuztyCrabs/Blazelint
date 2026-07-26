@@ -725,6 +725,10 @@ impl Analyzer {
                     None => Type::Unknown("object".to_string()),
                 }
             }
+            // A named argument's name identifies a parameter of the callee, not a
+            // variable in scope, so only the value is checked here. Matching the
+            // name against the callee's signature is deferred.
+            Expr::NamedArg { value, .. } => self.check_expr(value),
             // `check`/`checkpanic` unwrap an error union; `trap` yields the value
             // or an error. Full union modelling is deferred, so return the inner
             // expression's type.

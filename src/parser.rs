@@ -1999,8 +1999,7 @@ impl Parser {
                     let mut arguments = Vec::new();
                     if !self.check(&Token::RParen) {
                         loop {
-                            self.match_token(&[Token::DotDotDot])?; // spread argument
-                            arguments.push(self.expression()?);
+                            arguments.push(self.parse_call_argument()?);
                             if !self.match_token(&[Token::Comma])? {
                                 break;
                             }
@@ -2073,8 +2072,7 @@ impl Parser {
                 if self.match_token(&[Token::LParen])? {
                     if !self.check(&Token::RParen) {
                         loop {
-                            self.match_token(&[Token::DotDotDot])?; // spread argument
-                            arguments.push(self.expression()?);
+                            arguments.push(self.parse_call_argument()?);
                             if !self.match_token(&[Token::Comma])? {
                                 break;
                             }
@@ -2140,8 +2138,7 @@ impl Parser {
                             let mut arguments = Vec::new();
                             if !self.check(&Token::RParen) {
                                 loop {
-                                    self.match_token(&[Token::DotDotDot])?; // spread argument
-                                    arguments.push(self.expression()?);
+                                    arguments.push(self.parse_call_argument()?);
                                     if !self.match_token(&[Token::Comma])? {
                                         break;
                                     }
@@ -2191,8 +2188,7 @@ impl Parser {
         self.in_ternary_branch = false;
         if !self.check(&Token::RParen) {
             loop {
-                self.match_token(&[Token::DotDotDot])?; // spread argument `...expr`
-                arguments.push(self.expression()?);
+                arguments.push(self.parse_call_argument()?);
                 if !self.match_token(&[Token::Comma])? {
                     break;
                 }
@@ -2202,6 +2198,34 @@ impl Parser {
         self.in_ternary_branch = was_in_branch;
         let close_span = self.previous_span();
         Ok(self.make_call_expr(callee, arguments, open_span, close_span))
+    }
+
+    /// Parses a single call argument: a positional expression, a spread
+    /// argument (`...xs`), or a named argument (`name = value`).
+    ///
+    /// A named argument binds a *parameter of the callee*, so it is represented
+    /// as `Expr::NamedArg` rather than an assignment — otherwise the name would
+    /// be resolved against the enclosing scope and reported as undeclared.
+    fn parse_call_argument(&mut self) -> ParseResult<Expr> {
+        // `name = value`, but not `name == value` (the lexer emits `EqEq` for
+        // that, so a plain `Eq` is unambiguous here).
+        if matches!(self.peek(), Some(Token::Identifier(_)))
+            && matches!(self.peek_n(1), Some(Token::Eq))
+        {
+            let name = self.expect_ident("Expected argument name")?;
+            let name_span = self.previous_span();
+            self.advance()?; // '='
+            let value = self.expression()?;
+            let span = name_span.start..value.span().end;
+            return Ok(Expr::NamedArg {
+                name,
+                name_span,
+                value: Box::new(value),
+                span,
+            });
+        }
+        self.match_token(&[Token::DotDotDot])?; // spread argument `...xs`
+        self.expression()
     }
 
     /// Parses an XML name pattern `<a>`, `<ns:a>`, `<a|b>`, or `<*>`, returning
@@ -2817,8 +2841,7 @@ impl Parser {
                 if self.match_token(&[Token::LParen])? {
                     if !self.check(&Token::RParen) {
                         loop {
-                            self.match_token(&[Token::DotDotDot])?; // spread argument
-                            arguments.push(self.expression()?);
+                            arguments.push(self.parse_call_argument()?);
                             if !self.match_token(&[Token::Comma])? {
                                 break;
                             }
@@ -5015,6 +5038,58 @@ mod tests {
             !rejects("function f() { fork { return 1 2 3 } }"),
             "fork body is opaque"
         );
+    }
+
+    /// Named arguments must be `NamedArg`, not `Assign` — otherwise the
+    /// semantic pass resolves the parameter name against the enclosing scope
+    /// and reports it as an undeclared variable. See `docs/SEMANTIC_PLAN.md` §A.
+    #[test]
+    fn named_arguments_are_not_assignments() {
+        let call_args = |src: &str| -> Vec<Expr> {
+            match var_init(src) {
+                Expr::Call { arguments, .. } => arguments,
+                other => panic!("expected call, got {other:?}"),
+            }
+        };
+
+        // `f(a = 1)` is one named argument.
+        let args = call_args("int r = g(a = 1);");
+        assert_eq!(args.len(), 1);
+        assert!(
+            matches!(&args[0], Expr::NamedArg { name, .. } if name == "a"),
+            "expected NamedArg, got {:?}",
+            args[0]
+        );
+
+        // Mixed positional and named.
+        let args = call_args("int r = g(1, b = 2);");
+        assert_eq!(args.len(), 2);
+        assert!(matches!(&args[0], Expr::Literal { .. }));
+        assert!(matches!(&args[1], Expr::NamedArg { name, .. } if name == "b"));
+
+        // `==` is a comparison, not a named argument.
+        let args = call_args("int r = g(a == 1);");
+        assert!(
+            matches!(
+                &args[0],
+                Expr::Binary {
+                    op: BinaryOp::EqualEqual,
+                    ..
+                }
+            ),
+            "`a == 1` must stay a comparison, got {:?}",
+            args[0]
+        );
+
+        // A plain assignment statement is still an assignment.
+        let body = fn_body("function f() { a = 1; }");
+        assert!(matches!(
+            &body[0],
+            Stmt::Expression {
+                expression: Expr::Assign { .. },
+                ..
+            }
+        ));
     }
 
     #[test]
