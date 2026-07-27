@@ -551,3 +551,27 @@ flowchart TD
 
 * Added timing instrumentation to the pipeline for detailed performance insights.
 * Updated workflow to ensure reproducibility and automation.
+
+## Updates in v0.4.0
+
+### Grammar Coverage
+- The parser now accepts all 419 syntactic productions of the [Ballerina 2024R1 specification](https://ballerina.io/spec/lang/2024R1/), with 391 (93%) decomposed into structured AST and the remaining 28 consumed as opaque blocks.
+- Added a coverage harness (`cargo test --lib grammar_coverage_of_official_spec` and `scripts/grammar_coverage.sh`) that measures the parser against the official spec and the "Ballerina by Example" corpus (162/163 files parse cleanly).
+- Fixed grammar gaps found against real code: parenthesised type declarations, qualifier chains, keyword-spelled member and module names, negated type tests, typed destructuring patterns, and empty closed record types.
+- Documented the measured grammar in [`docs/EBNF.md`](EBNF.md) and [`docs/GRAMMAR_COVERAGE.md`](GRAMMAR_COVERAGE.md).
+
+### Semantic Analysis
+- Symbol resolution now covers functions, workers, types, and module-level declarations.
+- Class, service, and object bodies are analysed instead of skipped.
+- Named arguments are modelled as their own AST node.
+- Corrected equality checking and nilable assignment rules.
+- Resource path parameters are bound, and `lock` block returns are handled correctly.
+
+### Lint Rules
+- New rules matching official `bal scan` checks: `avoid-checkpanic` (`ballerina:1`), `self-assignment` (`ballerina:10`), `invalid-range` (`ballerina:12`), and the isolated-public family (`ballerina:3`, `:4`, `:5`).
+- Unused parameters are now a separate rule from unused variables, and every rule gets a full AST traversal.
+- Scan-rule parity now stands at 7 of 27 official rules — see [`docs/SCAN_RULES_PLAN.md`](SCAN_RULES_PLAN.md).
+
+### Benchmarking
+- Added a rule-matched comparison against `bal scan` (`scripts/benchmark_vs_scan.sh`), running only the rules both tools implement so the numbers are like-for-like.
+- Every benchmark timeout is a hard deadline, so a hung run fails rather than reporting a truncated time.
